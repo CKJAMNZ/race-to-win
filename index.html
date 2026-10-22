@@ -90,11 +90,25 @@ const CARS=[ // bases
  {id:'truck',name:'Monster Truck',price:450,speed:.92,grip:1.25,emoji:'🛻'},
  {id:'rocket',name:'Rocket Car',price:700,speed:1.15,grip:.9,emoji:'🏎️'},
  {id:'ghost',name:'Ghost Car',price:600,speed:1,grip:1,emoji:'👻',ghost:true},
+ {id:'bug',name:'Mini Bug',price:200,speed:.95,grip:1.1,emoji:'🐞'},
+ {id:'bolt',name:'Lightning Bolt',price:900,speed:1.2,grip:1,emoji:'⚡',un:{races:3}},
+ {id:'shark',name:'Shark Car',price:1100,speed:1.22,grip:1.1,emoji:'🦈',un:{wins:2}},
+ {id:'hover',name:'Hover Car',price:1400,speed:1.25,grip:1.2,emoji:'🛸',un:{money:2000}},
+ {id:'dragon',name:'Dragon Racer',price:2000,speed:1.32,grip:1.15,emoji:'🐉',un:{wins:5}},
+ {id:'police',name:'Police Cruiser',price:1600,speed:1.28,grip:1.25,emoji:'🚓',un:{races:10}},
+ {id:'unicorn',name:'Unicorn Speedster',price:3000,speed:1.4,grip:1.25,emoji:'🦄',un:{wins:10}},
+ {id:'rubyr',name:'Ruby Rocket',price:5000,speed:1.5,grip:1.3,emoji:'💥',un:{wins:20,money:5000}},
 ];
 const PART_KINDS={tire:'🛞 Tires',boost:'🔥 Turbo Boost',wing:'🪽 Flying Piece',rims:'✨ Rims'};
 const PAINTS=['#ff2d55','#ffcc00','#00c2ff','#5cff7a','#b066ff','#ff8c00','#ffffff','#222222'];
-const SHOP_PARTS=[{kind:'tire',tier:'normal',price:100},{kind:'boost',tier:'normal',price:150},{kind:'wing',tier:'normal',price:150},
- {kind:'tire',tier:'gold',price:400},{kind:'boost',tier:'gold',price:500},{kind:'rims',tier:'gold',price:450},{kind:'wing',tier:'gold',price:450}];
+const NAMES={tire:['Bumpy','Sticky','Racing','Mud','Slick','Spike','Rocket','Cloud','Lava','Star'],boost:['Puff','Zoom','Nitro','Blaster','Jet','Thunder','Comet','Volcano','Supernova','Galaxy'],
+ wing:['Paper','Bird','Bat','Glider','Eagle','Dragon','Angel','Phoenix','Comet','Star'],rims:['Shiny','Spinny','Chrome','Flame','Golden','Lucky','Crystal','Moon','Royal','Rainbow']};
+const UNLOCKS=[null,null,null,null,null,{races:2},{wins:1},{money:1500},{wins:3},{races:8},{money:3000},{wins:6},{races:15},{wins:10},{money:6000},{wins:15}];
+const SHOP_PARTS=[];['tire','boost','wing','rims'].forEach(k=>{UNLOCKS.forEach((u,i)=>{
+ const tier=i<3?'normal':i<5?'gold':i<9?'gold':i<12?'diamond':i<15?'amethyst':'ruby';const ti=TIERS.indexOf(tier);
+ SHOP_PARTS.push({kind:k,tier,name:NAMES[k][i%10]+(i>=10?' II':''),price:[100,400,1200,2500,5000][ti]+i*25,un:u})})});
+function unlocked(u){if(!u)return true;return (!u.wins||S.wins>=u.wins)&&(!u.races||S.races>=u.races)&&(!u.money||(S.maxMoney||S.money)>=u.money)}
+function unText(u){const a=[];if(u.wins)a.push(`Win ${u.wins} race${u.wins>1?'s':''}`);if(u.races)a.push(`Finish ${u.races} races`);if(u.money)a.push(`Have $${u.money}`);return '🔒 '+a.join(' + ')}
 const MAPS=[
  {id:'grass',name:'Grassland',emoji:'🌳',diff:1,ground:'#4caf50',road:'#666',side:'#2e7d32'},
  {id:'desert',name:'Desert',emoji:'🌵',diff:2,ground:'#f4c26b',road:'#a0815a',side:'#d9a441'},
@@ -102,7 +116,7 @@ const MAPS=[
  {id:'space',name:'Space',emoji:'🚀',diff:4,ground:'#0b0630',road:'#2a1f66',side:'#140c45'},
 ];
 const WEATHER=[{id:'sun',name:'☀️ Sunny'},{id:'rain',name:'🌧️ Rain (slippy!)'},{id:'snow',name:'❄️ Snow (slow, grippy)'}];
-function partName(p){return TIER_EMOJI[p.tier]+' '+cap(p.tier)+' '+PART_KINDS[p.kind].slice(2).trim()}
+function partName(p){return TIER_EMOJI[p.tier]+' '+(p.name?p.name+' ':'')+cap(p.tier)+' '+PART_KINDS[p.kind].slice(2).trim()}
 function cap(s){return s[0].toUpperCase()+s.slice(1)}
 function partValue(p){return [60,250,600,1200,2500][TIERS.indexOf(p.tier)]}
 let uid=()=>Math.random().toString(36).slice(2,9);
@@ -116,7 +130,7 @@ function load(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){} if(!S||!S
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 load();
 const $=id=>document.getElementById(id);
-function money(){['home','garage','store','daily'].forEach(k=>$('m-'+k).textContent='💵 $'+S.money)}
+function money(){S.maxMoney=Math.max(S.maxMoney||0,S.money);['home','garage','store','daily'].forEach(k=>$('m-'+k).textContent='💵 $'+S.money)}
 function find(id){return S.parts.find(p=>p.id===id)}
 function myCar(){const c=S.cars.find(c=>c.id===S.equip.car);return c?CARS.find(b=>b.id===c.base):null}
 
@@ -129,18 +143,19 @@ function rHome(){const c=myCar();
 function rGarage(){let h=(myCar()?'':'<div class="card" style="font-size:22px">👋 Welcome, racer! You have <b>$1,000</b>. Build your first car: pick a car, tires, boost and paint!</div>')+(myCar()?'':'')+'<h3>1. Car</h3><div class="row">';
  CARS.forEach(b=>{const own=S.cars.find(c=>c.base===b.id);const sel=own&&S.equip.car===own.id;
   h+=`<div class="card ${sel?'sel':''}"><div style="font-size:44px">${b.emoji}</div><b>${b.name}</b><br>${b.ghost?'Free ghost boost! Honk!':'Speed '+b.speed+' Grip '+b.grip}<br>`+
-  (own?(sel?'✅ Driving':`<button class="btn g" onclick="useCar('${own.id}')">Use</button>`):`<button class="btn" ${S.money<b.price?'disabled':''} onclick="buyCar('${b.id}')">$${b.price}</button>`)+'</div>'});
- h+='</div><h3>2. Parts you own (tap to put on)</h3><div class="row">';
+  (!unlocked(b.un)&&!own?`<div style="color:#a00">${unText(b.un)}</div>`:own?(sel?'✅ Driving':`<button class="btn g" onclick="useCar('${own.id}')">Use</button>`):`<button class="btn" ${S.money<b.price?'disabled':''} onclick="buyCar('${b.id}')">$${b.price}</button>`)+'</div>'});
+ h+='</div><h3>Parts you own (tap to put on)</h3><div class="row">';
  if(!S.parts.length)h+='<div class="card">No parts yet!</div>';
  S.parts.forEach(p=>{const on=S.equip[p.kind]===p.id;h+=`<div class="card ${on?'sel':''}" onclick="equip('${p.id}')"><b class="t-${p.tier}">${partName(p)}</b><br>${on?'✅ On':'tap to use'}</div>`});
- h+='</div><h3>3. Buy parts</h3><div class="row">';
- SHOP_PARTS.forEach((p,i)=>h+=`<div class="card"><b class="t-${p.tier}">${partName(p)}</b><br><button class="btn" ${S.money<p.price?'disabled':''} onclick="buyPart(${i})">$${p.price}</button></div>`);
+ h+='</div><h3>3. Buy parts (win and race more to unlock 🔒 ones!)</h3><div>';
+ Object.keys(PART_KINDS).forEach(k=>{h+=`<h4 style="margin:6px">${PART_KINDS[k]}</h4><div class="row">`;SHOP_PARTS.forEach((p,i)=>{if(p.kind!==k)return;const ok=unlocked(p.un);
+ h+=`<div class="card" style="${ok?'':'opacity:.6'}"><b class="t-${p.tier}">${ok?'':'🔒 '}${partName(p)}</b><br>`+(ok?`<button class="btn" ${S.money<p.price?'disabled':''} onclick="buyPart(${i})">$${p.price}</button>`:`<span style="color:#a00">${unText(p.un)}</span>`)+'</div>'});h+='</div>'});
  h+='</div><h3>4. Paint ($50)</h3><div class="row">';
  PAINTS.forEach(c=>h+=`<div class="card ${S.paint===c?'sel':''}" style="background:${c};min-width:60px;height:60px" onclick="paint('${c}')"></div>`);
  $('garageBody').innerHTML=h+'</div>';money()}
-function buyCar(id){const b=CARS.find(x=>x.id===id);if(S.money<b.price)return;S.money-=b.price;const c={id:uid(),base:id};S.cars.push(c);S.equip.car=c.id;beep(660);save();rGarage()}
+function buyCar(id){const b=CARS.find(x=>x.id===id);if(S.money<b.price||!unlocked(b.un))return;S.money-=b.price;const c={id:uid(),base:id};S.cars.push(c);S.equip.car=c.id;beep(660);save();rGarage()}
 function useCar(id){S.equip.car=id;save();rGarage()}
-function buyPart(i){const p=SHOP_PARTS[i];if(S.money<p.price)return;S.money-=p.price;const n={id:uid(),kind:p.kind,tier:p.tier};S.parts.push(n);S.equip[p.kind]=n.id;beep(660);save();rGarage()}
+function buyPart(i){const p=SHOP_PARTS[i];if(S.money<p.price)return;S.money-=p.price;if(!unlocked(p.un))return;const n={id:uid(),kind:p.kind,tier:p.tier,name:p.name};S.parts.push(n);S.equip[p.kind]=n.id;beep(660);save();rGarage()}
 function equip(id){const p=find(id);S.equip[p.kind]=S.equip[p.kind]===id?null:id;save();rGarage()}
 function paint(c){if(S.paint===c)return;if(S.money<50){alert('You need $50 for paint!');return}S.money-=50;S.paint=c;beep(880);save();rGarage()}
 function rStore(){let h='';
