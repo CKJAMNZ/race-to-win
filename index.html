@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Race to Win</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html,body{margin:0;height:100%;overflow:hidden;font-family:"Arial Rounded MT Bold","Trebuchet MS",sans-serif;background:#2b1055;color:#fff}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;padding:14px;overflow-y:auto;background:linear-gradient(160deg,#ff6ec4,#7873f5 50%,#4adede)}
+.screen.on{display:flex}
+h1{font-size:54px;margin:8px;text-shadow:4px 4px 0 #ff2d55,8px 8px 0 #222}
+h2{font-size:34px;margin:6px;text-shadow:3px 3px 0 #222}
+.btn{font:inherit;font-size:24px;border:4px solid #fff;border-radius:22px;padding:12px 22px;margin:6px;background:#ffcc00;color:#222;box-shadow:0 6px 0 #b38600;cursor:pointer}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 #b38600}
+.btn.g{background:#5cff7a;box-shadow:0 6px 0 #1f9e3a}.btn.r{background:#ff6b6b;box-shadow:0 6px 0 #a33}.btn.b{background:#6bd5ff;box-shadow:0 6px 0 #2a7fa8}
+.btn:disabled{opacity:.4}
+.row{display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch}
+.card{background:rgba(255,255,255,.92);color:#222;border-radius:18px;padding:10px 14px;margin:6px;min-width:150px;text-align:center;font-size:18px;border:4px solid transparent}
+.card.sel{border-color:#ff2d55;transform:scale(1.04)}
+.money{position:absolute;top:10px;right:16px;font-size:26px;background:#222a;padding:6px 14px;border-radius:14px}
+.back{position:absolute;top:10px;left:10px}
+.t-normal{color:#555}.t-gold{color:#d4a000}.t-diamond{color:#00b7ff}.t-amethyst{color:#9b30ff}.t-ruby{color:#e0115f}
+#game{position:absolute;inset:0;display:none}
+#cv{width:100%;height:100%;display:block}
+.ctl{position:absolute;bottom:18px;width:110px;height:110px;border-radius:50%;border:5px solid #fff;font-size:22px;font-weight:bold;color:#fff;display:flex;align-items:center;justify-content:center;background:#0006}
+.ctl.on{background:#fff8;color:#222}
+#msg{position:absolute;top:40%;width:100%;text-align:center;font-size:60px;text-shadow:4px 4px 0 #000;pointer-events:none}
+#rot{position:fixed;inset:0;background:#222;display:none;align-items:center;justify-content:center;font-size:32px;text-align:center;z-index:99}
+@media (orientation:portrait){#rot{display:flex}}
+#wheel{transition:transform 3s cubic-bezier(.2,.8,.2,1)}
+</style></head><body>
+<div id="rot">🔄 Turn your iPad sideways<br>to play!</div>
+
+<div class="screen on" id="s-home">
+ <div class="money" id="m-home"></div>
+ <h1>🏁 Race to Win 🏁</h1>
+ <div style="font-size:18px">by Archer &amp; Dad</div>
+ <div class="row" style="margin-top:14px">
+  <button class="btn g" onclick="goRace()">🏎️ RACE!</button>
+  <button class="btn" onclick="show('garage')">🔧 Garage</button>
+  <button class="btn b" onclick="show('store')">💰 Store</button>
+  <button class="btn b" onclick="show('trophy')">🏆 Trophies</button>
+  <button class="btn r" onclick="show('daily')">🎁 Daily Prize</button>
+ </div>
+ <div id="homeinfo" style="font-size:20px;margin-top:10px;text-align:center"></div>
+</div>
+
+<div class="screen" id="s-garage"><button class="btn back" onclick="if(myCar())show('home');else alert('Pick a car first! 🚗')">⬅</button><div class="money" id="m-garage"></div>
+ <h2>🔧 Garage</h2><div id="garageBody" style="width:100%"></div></div>
+
+<div class="screen" id="s-store"><button class="btn back" onclick="show('home')">⬅</button><div class="money" id="m-store"></div>
+ <h2>💰 Sell Stuff</h2><div style="font-size:18px">Tap SELL to get money. (You can't sell what you're using.)</div><div class="row" id="storeBody"></div></div>
+
+<div class="screen" id="s-trophy"><button class="btn back" onclick="show('home')">⬅</button>
+ <h2>🏆 Trophy Room</h2><div class="row" id="trophyBody" style="font-size:60px"></div></div>
+
+<div class="screen" id="s-daily"><button class="btn back" onclick="show('home')">⬅</button><div class="money" id="m-daily"></div>
+ <h2>🎁 Daily Prize</h2>
+ <svg id="wheel" width="260" height="260" viewBox="-100 -100 200 200"></svg>
+ <div style="font-size:40px;margin-top:-10px">▲</div>
+ <div id="dailyMsg" style="font-size:24px;text-align:center"></div>
+ <button class="btn g" id="spinBtn" onclick="spin()">SPIN!</button></div>
+
+<div class="screen" id="s-vote"><button class="btn back" onclick="show('home')">⬅</button>
+ <h2 id="voteTitle">🗳️ Vote for a Map!</h2><div id="voteSub" style="font-size:20px"></div>
+ <div class="row" id="voteBody"></div>
+ <h2 style="font-size:24px">Weather</h2><div class="row" id="weatherBody"></div>
+ <button class="btn g" onclick="startRace()">GO! 🚦</button></div>
+
+<div class="screen" id="s-prize"><h2 id="prizeTitle">🎉 You Won!</h2><div id="prizeSub" style="font-size:22px"></div><div class="row" id="prizeBody"></div><button class="btn" id="prizeDone" onclick="show('home')">Home</button></div>
+
+<div id="game"><canvas id="cv"></canvas>
+ <div class="ctl" id="bL" style="left:18px">◀</div>
+ <div class="ctl" id="bR" style="left:140px">▶</div>
+ <div class="ctl" id="bFly" style="right:262px;background:#3a86ff88">🪽 FLY</div>
+ <div class="ctl" id="bBoost" style="right:140px;background:#ff006e88">🔥 BOOST</div>
+ <div class="ctl" id="bGas" style="right:18px;background:#38b00088">⛽ GO</div>
+ <div class="ctl" id="bGhost" style="right:18px;bottom:140px;width:90px;height:90px;font-size:16px;display:none;background:#aaf8">👻 GHOST</div>
+ <div id="msg"></div>
+ <button class="btn r" style="position:absolute;top:8px;right:8px;font-size:16px;padding:6px 12px" onclick="quitRace()">✖ Quit</button>
+</div>
+
+<script>
+// ===== DATA =====
+const TIERS=['normal','gold','diamond','amethyst','ruby'];
+const TIER_EMOJI={normal:'⚪',gold:'🟡',diamond:'💎',amethyst:'🟣',ruby:'🔴'};
+const TIER_MULT=[1,1.15,1.3,1.45,1.6];
+const CARS=[ // bases
+ {id:'zoom',name:'Zoomer',price:300,speed:1,grip:1,emoji:'🚗'},
+ {id:'truck',name:'Monster Truck',price:450,speed:.92,grip:1.25,emoji:'🛻'},
+ {id:'rocket',name:'Rocket Car',price:700,speed:1.15,grip:.9,emoji:'🏎️'},
+ {id:'ghost',name:'Ghost Car',price:600,speed:1,grip:1,emoji:'👻',ghost:true},
+];
+const PART_KINDS={tire:'🛞 Tires',boost:'🔥 Turbo Boost',wing:'🪽 Flying Piece',rims:'✨ Rims'};
+const PAINTS=['#ff2d55','#ffcc00','#00c2ff','#5cff7a','#b066ff','#ff8c00','#ffffff','#222222'];
+const SHOP_PARTS=[{kind:'tire',tier:'normal',price:100},{kind:'boost',tier:'normal',price:150},{kind:'wing',tier:'normal',price:150},
+ {kind:'tire',tier:'gold',price:400},{kind:'boost',tier:'gold',price:500},{kind:'rims',tier:'gold',price:450},{kind:'wing',tier:'gold',price:450}];
+const MAPS=[
+ {id:'grass',name:'Grassland',emoji:'🌳',diff:1,ground:'#4caf50',road:'#666',side:'#2e7d32'},
+ {id:'desert',name:'Desert',emoji:'🌵',diff:2,ground:'#f4c26b',road:'#a0815a',side:'#d9a441'},
+ {id:'city',name:'City',emoji:'🏙️',diff:3,ground:'#8a8fa0',road:'#3b3b46',side:'#55596a'},
+ {id:'space',name:'Space',emoji:'🚀',diff:4,ground:'#0b0630',road:'#2a1f66',side:'#140c45'},
+];
+const WEATHER=[{id:'sun',name:'☀️ Sunny'},{id:'rain',name:'🌧️ Rain (slippy!)'},{id:'snow',name:'❄️ Snow (slow, grippy)'}];
+function partName(p){return TIER_EMOJI[p.tier]+' '+cap(p.tier)+' '+PART_KINDS[p.kind].slice(2).trim()}
+function cap(s){return s[0].toUpperCase()+s.slice(1)}
+function partValue(p){return [60,250,600,1200,2500][TIERS.indexOf(p.tier)]}
+let uid=()=>Math.random().toString(36).slice(2,9);
+
+// ===== SAVE =====
+const KEY='raceToWin_v1';
+let S;
+function fresh(){return {money:1000,cars:[],parts:[],equip:{car:null,tire:null,boost:null,wing:null,rims:null},paint:'#ff2d55',
+ passedTest:false,trophies:[],lastDaily:'',wins:0,races:0,version:1}}
+function load(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){} if(!S||!S.version)S=fresh()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+load();
+const $=id=>document.getElementById(id);
+function money(){['home','garage','store','daily'].forEach(k=>$('m-'+k).textContent='💵 $'+S.money)}
+function find(id){return S.parts.find(p=>p.id===id)}
+function myCar(){const c=S.cars.find(c=>c.id===S.equip.car);return c?CARS.find(b=>b.id===c.base):null}
+
+// ===== SCREENS =====
+function show(n){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$('game').style.display='none';
+ $('s-'+n).classList.add('on');money();({home:rHome,garage:rGarage,store:rStore,trophy:rTrophy,daily:rDaily}[n]||(()=>{}))()}
+function rHome(){const c=myCar();
+ $('homeinfo').innerHTML=(c?`Your car: ${c.emoji} <b>${c.name}</b>`:'👉 Go to the <b>Garage</b> and buy a car first!')+
+ `<br>${S.passedTest?'✅ Test passed! Real races are open.':'📝 Beat the bot in a Practice Race to unlock real races!'}<br>Wins: ${S.wins} 🏆`}
+function rGarage(){let h=(myCar()?'':'<div class="card" style="font-size:22px">👋 Welcome, racer! You have <b>$1,000</b>. Build your first car: pick a car, tires, boost and paint!</div>')+(myCar()?'':'')+'<h3>1. Car</h3><div class="row">';
+ CARS.forEach(b=>{const own=S.cars.find(c=>c.base===b.id);const sel=own&&S.equip.car===own.id;
+  h+=`<div class="card ${sel?'sel':''}"><div style="font-size:44px">${b.emoji}</div><b>${b.name}</b><br>${b.ghost?'Free ghost boost! Honk!':'Speed '+b.speed+' Grip '+b.grip}<br>`+
+  (own?(sel?'✅ Driving':`<button class="btn g" onclick="useCar('${own.id}')">Use</button>`):`<button class="btn" ${S.money<b.price?'disabled':''} onclick="buyCar('${b.id}')">$${b.price}</button>`)+'</div>'});
+ h+='</div><h3>2. Parts you own (tap to put on)</h3><div class="row">';
+ if(!S.parts.length)h+='<div class="card">No parts yet!</div>';
+ S.parts.forEach(p=>{const on=S.equip[p.kind]===p.id;h+=`<div class="card ${on?'sel':''}" onclick="equip('${p.id}')"><b class="t-${p.tier}">${partName(p)}</b><br>${on?'✅ On':'tap to use'}</div>`});
+ h+='</div><h3>3. Buy parts</h3><div class="row">';
+ SHOP_PARTS.forEach((p,i)=>h+=`<div class="card"><b class="t-${p.tier}">${partName(p)}</b><br><button class="btn" ${S.money<p.price?'disabled':''} onclick="buyPart(${i})">$${p.price}</button></div>`);
+ h+='</div><h3>4. Paint ($50)</h3><div class="row">';
+ PAINTS.forEach(c=>h+=`<div class="card ${S.paint===c?'sel':''}" style="background:${c};min-width:60px;height:60px" onclick="paint('${c}')"></div>`);
+ $('garageBody').innerHTML=h+'</div>';money()}
+function buyCar(id){const b=CARS.find(x=>x.id===id);if(S.money<b.price)return;S.money-=b.price;const c={id:uid(),base:id};S.cars.push(c);S.equip.car=c.id;beep(660);save();rGarage()}
+function useCar(id){S.equip.car=id;save();rGarage()}
+function buyPart(i){const p=SHOP_PARTS[i];if(S.money<p.price)return;S.money-=p.price;const n={id:uid(),kind:p.kind,tier:p.tier};S.parts.push(n);S.equip[p.kind]=n.id;beep(660);save();rGarage()}
+function equip(id){const p=find(id);S.equip[p.kind]=S.equip[p.kind]===id?null:id;save();rGarage()}
+function paint(c){if(S.paint===c)return;if(S.money<50){alert('You need $50 for paint!');return}S.money-=50;S.paint=c;beep(880);save();rGarage()}
+function rStore(){let h='';
+ S.cars.forEach(c=>{const b=CARS.find(x=>x.id===c.base);const used=S.equip.car===c.id;const v=Math.floor(b.price/2);
+  h+=`<div class="card">${b.emoji} <b>${b.name}</b><br><button class="btn" ${used?'disabled':''} onclick="sellCar('${c.id}',${v})">SELL $${v}</button></div>`});
+ S.parts.forEach(p=>{const used=S.equip[p.kind]===p.id;h+=`<div class="card"><b class="t-${p.tier}">${partName(p)}</b><br><button class="btn" ${used?'disabled':''} onclick="sellPart('${p.id}')">SELL $${partValue(p)}</button></div>`});
+ $('storeBody').innerHTML=h||'<div class="card">Nothing to sell yet!</div>';money()}
+function sellCar(id,v){S.cars=S.cars.filter(c=>c.id!==id);S.money+=v;beep(500);save();rStore()}
+function sellPart(id){const p=find(id);S.parts=S.parts.filter(x=>x.id!==id);S.money+=partValue(p);beep(500);save();rStore()}
+function rTrophy(){const col={normal:'#ccc',gold:'gold',diamond:'#6cf',amethyst:'#b066ff',ruby:'#e0115f'};
+ $('trophyBody').innerHTML=S.trophies.length?S.trophies.map(t=>`<div class="card" style="background:${col[t.tier]};min-width:90px">🏆<div style="font-size:14px">${t.map}</div></div>`).join(''):'<div class="card" style="font-size:22px">Win a race to get a trophy!</div>'}
+
+// ===== DAILY WHEEL =====
+const WHEEL=[{t:'normal',w:30,c:'#ddd'},{t:'normal',w:30,c:'#bbb'},{t:'gold',w:22,c:'gold'},{t:'diamond',w:12,c:'#6cf'},{t:'amethyst',w:5,c:'#b066ff'},{t:'ruby',w:1,c:'#e0115f'}];
+function today(){return new Date().toDateString()}
+function rDaily(){let svg='';const n=WHEEL.length;WHEEL.forEach((s,i)=>{const a0=i/n*2*Math.PI,a1=(i+1)/n*2*Math.PI;
+ svg+=`<path d="M0 0L${95*Math.sin(a0)} ${-95*Math.cos(a0)}A95 95 0 0 1 ${95*Math.sin(a1)} ${-95*Math.cos(a1)}Z" fill="${s.c}" stroke="#fff" stroke-width="3"/>`;
+ const am=(a0+a1)/2;svg+=`<text x="${60*Math.sin(am)}" y="${-60*Math.cos(am)+6}" font-size="18" text-anchor="middle">${TIER_EMOJI[s.t]}</text>`});
+ $('wheel').innerHTML=svg;const done=S.lastDaily===today();$('spinBtn').disabled=done;
+ $('dailyMsg').textContent=done?'Come back tomorrow for another prize! 😊':'Get $100 and spin for a free part!'}
+let wheelRot=0;
+function spin(){if(S.lastDaily===today())return;let r=Math.random()*100,i=0;for(;i<WHEEL.length;i++){r-=WHEEL[i].w;if(r<0)break}i=Math.min(i,WHEEL.length-1);
+ const kinds=Object.keys(PART_KINDS);const p={id:uid(),kind:kinds[Math.floor(Math.random()*kinds.length)],tier:WHEEL[i].t};
+ S.lastDaily=today();S.money+=100;S.parts.push(p);save();$('spinBtn').disabled=true;
+ const seg=360/WHEEL.length;wheelRot+=360*5+(360-(i+.5)*seg)-(wheelRot%360);$('wheel').style.transform=`rotate(${wheelRot}deg)`;
+ setTimeout(()=>{$('dailyMsg').innerHTML=`You got $100 and <b class="t-${p.tier}">${partName(p)}</b>! 🎉`;beep(990);money()},3100)}
+
+// ===== VOTE =====
+let vote={map:'grass',weather:'sun',practice:true};
+function goRace(){if(!myCar()){alert('Buy a car in the Garage first! 🚗');show('garage');return}
+ vote.practice=!S.passedTest;show('vote');
+ $('voteTitle').textContent=vote.practice?'📝 Practice Test: beat the bot!':'🗳️ Vote for a Map!';
+ $('voteSub').textContent=vote.practice?'Win against 1 bot to unlock real races.':'Race 3 bots! Harder maps = better prizes!';
+ rVote()}
+function rVote(){$('voteBody').innerHTML=MAPS.map(m=>`<div class="card ${vote.map===m.id?'sel':''}" onclick="vote.map='${m.id}';rVote()"><div style="font-size:44px">${m.emoji}</div><b>${m.name}</b><br>${'⭐'.repeat(m.diff)}</div>`).join('');
+ $('weatherBody').innerHTML=WEATHER.map(w=>`<div class="card ${vote.weather===w.id?'sel':''}" onclick="vote.weather='${w.id}';rVote()">${w.name}</div>`).join('')}
+
+// ===== SOUND =====
+let AC;function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}return AC}
+function beep(f,d=.12,type='square',vol=.08){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.value=f;g.gain.value=vol;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+d);o.stop(a.currentTime+d)}
+function weirdHonk(){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type='sawtooth';o.frequency.setValueAtTime(300,a.currentTime);
+ o.frequency.linearRampToValueAtTime(90,a.currentTime+.4);o.frequency.linearRampToValueAtTime(420,a.currentTime+.8);g.gain.value=.12;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+1);o.stop(a.currentTime+1)}
+document.addEventListener('touchstart',ac,{once:true});document.addEventListener('mousedown',ac,{once:true});
+
+// ===== RACE =====
+const cv=$('cv'),ctx=cv.getContext('2d');let W,H;
+function resize(){W=cv.width=innerWidth*devicePixelRatio;H=cv.height=innerHeight*devicePixelRatio}
+addEventListener('resize',resize);
+const LANES=4,TRACK=6000;let R=null,input={L:0,R:0,gas:0,boost:0,fly:0,ghost:0};
+function bindBtn(id,k){const el=$(id);const on=e=>{e.preventDefault();input[k]=1;el.classList.add('on')},off=e=>{e.preventDefault();input[k]=0;el.classList.remove('on')};
+ el.addEventListener('touchstart',on,{passive:false});el.addEventListener('touchend',off);el.addEventListener('touchcancel',off);
+ el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off)}
+[['bL','L'],['bR','R'],['bGas','gas'],['bBoost','boost'],['bFly','fly'],['bGhost','ghost']].forEach(a=>bindBtn(...a));
+// keyboard too (optional, for testing on a computer)
+const KM={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'gas',' ':'boost',f:'fly',g:'ghost'};
+addEventListener('keydown',e=>{if(KM[e.key])input[KM[e.key]]=1});addEventListener('keyup',e=>{if(KM[e.key])input[KM[e.key]]=0});
+
+function stats(){const b=myCar(),t=find(S.equip.tire),bo=find(S.equip.boost),w=find(S.equip.wing),ri=find(S.equip.rims);
+ const ti=t?TIERS.indexOf(t.tier):-1,bi=bo?TIERS.indexOf(bo.tier):-1,wi=w?TIERS.indexOf(w.tier):-1,rii=ri?TIERS.indexOf(ri.tier):-1;
+ return {top:(b.speed*(1+(ti+1)*.05))*11,grip:b.grip*(1+(ti+1)*.12),accel:.12*(1+(rii+1)*.35),
+  // turbo: no boost part = 3s, normal 4s, gold 5s ... ruby 10s; drain lower with better tier
+  boostTime:bo?[4,5,6.5,8,10][bi]:3,boostDrain:bo?[1.3,1.25,1,.75,.5][bi]:1.4,boostPow:bo?1.5+bi*.1:1.4,
+  fly:w?1+wi*.15:.85,ghost:!!b.ghost,emoji:b.emoji,tireTier:t?t.tier:'normal'}}
+function makeRacer(name,lane,color,skill){return {name,x:lane,y:0,z:0,vz:0,v:0,color,skill,ai:true,fuel:1,boosting:0,lane,finish:0,ghostT:0,passed:0}}
+function startRace(){const m=MAPS.find(x=>x.id===vote.map);const st=stats();
+ const bots=vote.practice?[makeRacer('Bot Bob',2,'#888',.78)]:[makeRacer('Speedy',0,'#00e5ff',.8+m.diff*.03),makeRacer('Turbo Tina',2,'#ff8c00',.83+m.diff*.03),makeRacer('Max',3,'#a0f',.86+m.diff*.03)];
+ const me={name:'YOU',x:1,y:0,z:0,vz:0,v:0,color:S.paint,ai:false,fuel:1,boosting:0,finish:0,ghostT:0,ghostUsed:false};
+ R={map:m,weather:vote.weather,st,me,cars:[me,...bots],t:-3,place:0,done:false,finishOrder:[],snow:[],flash:''};
+ for(let i=0;i<60;i++)R.snow.push({x:Math.random(),y:Math.random()});
+ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$('game').style.display='block';$('bGhost').style.display=st.ghost?'flex':'none';
+ resize();last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop)}
+let raf,last;
+function quitRace(){R=null;cancelAnimationFrame(raf);show('home')}
+function loop(ts){if(!R)return;const dt=Math.min(.05,(ts-last)/1000);last=ts;step(dt);draw();raf=requestAnimationFrame(loop)}
+function step(dt){R.t+=dt;const msg=$('msg');
+ if(R.t<0){msg.textContent=Math.ceil(-R.t);return} if(R.t<1)msg.textContent='GO! 🏁';else if(!R.done){if(R.flash!==R._lf){R._lf=R.flash;R._ft=R.t}if(R.t-R._ft>1.5&&!(R.me.ghostT>0))R.flash='';msg.textContent=R.flash}
+ const space=R.map.id==='space',wx=R.weather,st=R.st;
+ const wSpeed=wx==='snow'?.82:1,wGrip=wx==='rain'?.45:wx==='snow'?1.3:1;
+ for(const c of R.cars){if(c.finish)continue;
+  let gas,steer=0,wantBoost=0,wantFly=0;const top=c.ai?st.top*.95*c.skill/0.85*(0.9+R.map.diff*.025):st.top;
+  if(c.ai){gas=1;// AI: dodge cars ahead, boost sometimes, jump sometimes
+   const ahead=R.cars.find(o=>o!==c&&Math.abs(o.x-c.x)<.7&&o.y>c.y&&o.y-c.y<120&&o.z<5);
+   if(ahead){const tgt=c.x<1.5?c.x+1:c.x-1;steer=Math.sign(tgt-c.x)}else steer=Math.sign(c.lane-c.x)*(Math.abs(c.lane-c.x)>.05);
+   if(ahead&&Math.random()<.01){c.lane=Math.max(0,Math.min(3,Math.round(c.x+(Math.random()<.5?-1:1))))}
+   if(Math.random()<.004*c.skill)c.boosting=2.5;
+   if(ahead&&Math.random()<.02)wantFly=1;
+  }else{gas=input.gas;steer=input.R-input.L;wantBoost=input.boost;wantFly=input.fly;
+   if(input.ghost&&st.ghost&&!c.ghostUsed&&R.t>0){c.ghostUsed=true;c.ghostT=1;c.ghostFrom=c.y;c.ghostPassed=0;weirdHonk();R.flash='👻 BOO!'}}
+  // grip / steering (rain slides)
+  c.sx=(c.sx||0)+(steer*3.2-(c.sx||0))*Math.min(1,dt*6*(c.ai?1:st.grip)*wGrip);
+  c.x=Math.max(0,Math.min(LANES-1,c.x+c.sx*dt));
+  // speed
+  let accel=c.ai?.12:st.accel, maxV=top*wSpeed;
+  const onGround=c.z<=0;
+  // fly + boost together = big jump (over ~2 cars)
+  if(!c.ai&&wantFly&&wantBoost&&onGround&&c.fuel>.15){c.vz=space?9:16*st.fly;c.v+=space?2:3;c.fuel-=.15;beep(300,.3,'triangle');R.flash='🦘 BIG JUMP!'}
+  else if(wantFly&&onGround){c.vz=(space?6:9)*(c.ai?1:st.fly);beep(500,.1,'triangle')}
+  // boost
+  const bTime=c.ai?3:st.boostTime;
+  if(!c.ai&&wantBoost&&!wantFly&&c.fuel>0){c.boosting=.1;c.fuel-=dt/bTime*st.boostDrain}
+  if(c.boosting>0){c.boosting-=dt;
+   if(space){c.vz=Math.max(c.vz,1.5);maxV*=.8} // space: boost = tiny lift and slower
+   else {maxV*=c.ai?1.35:st.boostPow;accel*=3}}
+  else if(!c.ai&&!wantBoost)c.fuel=Math.min(1,c.fuel+dt*.06);
+  c.fuel=Math.max(0,c.fuel);
+  if(gas)c.v+=(maxV-c.v)*accel*dt*8*(c.v<4?1+(c.ai?0:(st.accel/.12-1)):1);else c.v*=1-dt*.8;
+  if(c.v>maxV)c.v+=(maxV-c.v)*dt*2;
+  // vertical
+  if(c.z>0||c.vz>0){c.vz-=(space?6:30)*dt;c.z+=c.vz*dt*10;if(space&&c.z>0)c.v=Math.max(c.v,maxV*.55);if(c.z<=0){c.z=0;c.vz=0}}
+  // ghost boost: zoom quarter track, pass through cars
+  if(c.ghostT>0){c.v=Math.max(c.v,40);if(c.y-c.ghostFrom>=TRACK/4){c.ghostT=0;R.flash=''}}
+  c.y+=c.v*dt*20;
+  if(c.y>=TRACK){c.finish=R.t;R.finishOrder.push(c);if(!c.ai)endRace()}
+ }
+ // collisions
+ for(const a of R.cars)for(const b of R.cars){if(a===b||a.finish||b.finish)continue;
+  if(Math.abs(a.x-b.x)<.6&&Math.abs(a.y-b.y)<40){
+   if(a.ghostT>0||b.ghostT>0)continue;
+   if(a.z>3&&a.vz<0&&a.z<14&&b.z<2){a.vz=10;a.y=b.y+45;a.v+=2;if(!a.ai){beep(800,.15);R.flash='🦘 BOING!'}} // landed on car -> bounce up & in front
+   else if(Math.abs(a.z-b.z)<4&&a.y<b.y){a.v*=.6;a.y=b.y-41;if(!a.ai)beep(120,.1)}
+ }}
+ const sorted=[...R.cars].sort((a,b)=>(b.finish?1e6-b.finish:b.y)-(a.finish?1e6-a.finish:a.y));R.place=sorted.indexOf(R.me)+1;
+}
+function draw(){const m=R.map,me=R.me,d=devicePixelRatio;ctx.fillStyle=m.ground;ctx.fillRect(0,0,W,H);
+ const roadW=Math.min(W*.6,H*1.1),rx=(W-roadW)/2,laneW=roadW/LANES,sc=H/900,camY=me.y-200;
+ const Y=y=>H-(y-camY)*sc*1.1-140*d;
+ // scenery
+ if(m.id==='space'){ctx.fillStyle='#fff';for(let i=0;i<80;i++){const yy=((i*137+camY*.3*sc)%H+H)%H;ctx.fillRect((i*251)%W,yy,3*d,3*d)}}
+ else{ctx.font=40*d+'px serif';const em={grass:'🌳',desert:'🌵',city:'🏢'}[m.id];for(let k=Math.floor(camY/150)-1;k<camY/150+10;k++){const yy=Y(k*150);ctx.fillText(em,rx-70*d-(k%2)*40*d,yy);ctx.fillText(em,rx+roadW+20*d+(k%3)*30*d,yy)}}
+ ctx.fillStyle=m.side;ctx.fillRect(rx-14*d,0,roadW+28*d,H);ctx.fillStyle=m.road;ctx.fillRect(rx,0,roadW,H);
+ ctx.fillStyle=m.id==='space'?'#7cf':'#fff';for(let l=1;l<LANES;l++)for(let k=Math.floor(camY/80);k<camY/80+14;k++)ctx.fillRect(rx+l*laneW-3*d,Y(k*80),6*d,30*d);
+ // finish line
+ const fy=Y(TRACK);for(let i=0;i<16;i++){ctx.fillStyle=i%2?'#000':'#fff';ctx.fillRect(rx+i*roadW/16,fy-20*d,roadW/16,20*d)}
+ // cars (lower z first)
+ [...R.cars].sort((a,b)=>a.z-b.z).forEach(c=>{const cx=rx+(c.x+.5)*laneW,cy=Y(c.y),s=1+Math.min(c.z,40)/80,w=laneW*.5*s,h=laneW*.85*s;
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(cx,cy+c.z*2*d,w*.6,h*.3,0,0,7);ctx.fill();
+  const yy=cy-Math.min(c.z,40)*1.5*d;ctx.save();const ghost=!c.ai&&R.st.ghost;ctx.globalAlpha=ghost?(.45+.2*Math.sin(R.t*8)):1;
+  ctx.fillStyle='#111';ctx.fillRect(cx-w/2-5*d,yy-h*.4,8*d,h*.25);ctx.fillRect(cx+w/2-3*d,yy-h*.4,8*d,h*.25);ctx.fillRect(cx-w/2-5*d,yy+h*.1,8*d,h*.25);ctx.fillRect(cx+w/2-3*d,yy+h*.1,8*d,h*.25);
+  ctx.fillStyle=ghost?'#e8e8ff':c.color;rr(cx-w/2,yy-h/2,w,h,12*d);ctx.fill();ctx.fillStyle='#9ef';ctx.fillRect(cx-w*.35,yy-h*.3,w*.7,h*.2);
+  if(ghost){ctx.fillStyle='#000';ctx.beginPath();ctx.arc(cx-w*.18,yy+h*.05,5*d,0,7);ctx.arc(cx+w*.18,yy+h*.05,5*d,0,7);ctx.fill()}
+  if(c.boosting>0||c.ghostT>0){ctx.fillStyle=c.ghostT>0?'#b9f':'#ff6b00';ctx.beginPath();ctx.moveTo(cx-w*.3,yy+h/2);ctx.lineTo(cx,yy+h/2+30*d+Math.random()*20*d);ctx.lineTo(cx+w*.3,yy+h/2);ctx.fill()}
+  ctx.restore();ctx.fillStyle='#fff';ctx.font='bold '+14*d+'px sans-serif';ctx.textAlign='center';ctx.fillText(c.name,cx,yy-h/2-6*d);ctx.textAlign='left'});
+ // weather
+ if(R.weather!=='sun'){ctx.fillStyle=R.weather==='rain'?'#9cf':'#fff';R.snow.forEach(p=>{p.y+=R.weather==='rain'?.03:.005;p.x+=R.weather==='snow'?Math.sin(R.t+p.y*9)*.001:0;if(p.y>1)p.y=0;
+  if(R.weather==='rain')ctx.fillRect(p.x*W,p.y*H,2*d,18*d);else{ctx.beginPath();ctx.arc(p.x*W,p.y*H,4*d,0,7);ctx.fill()}})}
+ // HUD
+ ctx.fillStyle='#0008';rr(10*d,10*d,300*d,110*d,14*d);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold '+28*d+'px sans-serif';
+ ctx.fillText(`Place: ${R.place}/${R.cars.length}`,22*d,44*d);ctx.font=18*d+'px sans-serif';ctx.fillText(`${m.emoji} ${m.name}  ${Math.round(me.v*10)} km/h`,22*d,70*d);
+ ctx.fillText('Fuel',22*d,100*d);ctx.fillStyle='#333';ctx.fillRect(70*d,86*d,220*d,18*d);ctx.fillStyle=me.fuel>.3?'#ff9f1c':'#e63946';ctx.fillRect(70*d,86*d,220*d*me.fuel,18*d);
+ // progress bar
+ const px=W-40*d;ctx.fillStyle='#0008';ctx.fillRect(px,60*d,14*d,H*.5);R.cars.forEach(c=>{ctx.fillStyle=c.ai?c.color:'#fff';ctx.beginPath();ctx.arc(px+7*d,60*d+H*.5*(1-Math.min(1,c.y/TRACK)),9*d,0,7);ctx.fill()});
+ if(R.st.ghost){$('bGhost').style.opacity=me.ghostUsed?.3:1}}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+
+// ===== END / PRIZES =====
+function endRace(){R.done=true;const won=R.finishOrder[0]===R.me,m=R.map,practice=vote.practice,rRef=R;S.races++;
+ $('msg').textContent=won?'🥇 YOU WIN!':'Place '+R.place;
+ setTimeout(()=>{if(R!==rRef)return;R=null;cancelAnimationFrame(raf);
+  if(practice){if(won){S.passedTest=true;save();$('prizeTitle').textContent='✅ Test Passed!';$('prizeSub').textContent='Real races are unlocked! Here is $200 and a prize:';S.money+=200;prizes(1)}
+   else{$('prizeTitle').textContent='😅 So close!';$('prizeSub').textContent='Beat Bot Bob to pass the test. Try again!';$('prizeBody').innerHTML='';$('prizeDone').style.display=''}}
+  else if(won){S.wins++;S.money+=100*m.diff;S.trophies.push({map:m.name,tier:R0tier});save();$('prizeTitle').textContent='🎉 You Won!';$('prizeSub').textContent=`+$${100*m.diff} and a 🏆! Pick ONE prize:`;prizes(m.diff)}
+  else{const cash=R0place<=2?50:20;S.money+=cash;save();$('prizeTitle').textContent='Good race! Place '+R0place;$('prizeSub').textContent=`You got $${cash}. Win to get a prize!`;$('prizeBody').innerHTML='';$('prizeDone').style.display=''}
+  show('prize')},1800);
+ var R0tier=R.st.tireTier,R0place=R.place;save()}
+function rollTier(diff){// harder map = better chances
+ const r=Math.random()*100,b=(diff-1)*8;if(r<1+b*.4)return 'ruby';if(r<4+b*.9)return 'amethyst';if(r<12+b*1.6)return 'diamond';if(r<35+b*2)return 'gold';return 'normal'}
+function prizes(diff){const kinds=['tire','boost','wing','rims'].sort(()=>Math.random()-.5).slice(0,3);
+ const opts=kinds.map(k=>({id:uid(),kind:k,tier:rollTier(diff)}));$('prizeDone').style.display='none';
+ $('prizeBody').innerHTML=opts.map((p,i)=>`<div class="card" style="cursor:pointer" onclick="pick(${i})"><div style="font-size:50px">🎁</div><b class="t-${p.tier}">${partName(p)}</b></div>`).join('');window._opts=opts}
+function pick(i){S.parts.push(window._opts[i]);save();beep(990);$('prizeBody').innerHTML=`<div class="card">You got <b class="t-${window._opts[i].tier}">${partName(window._opts[i])}</b>! Put it on in the Garage.</div>`;$('prizeDone').style.display=''}
+
+/* ROOM FOR LATER: trading, multiplayer, parts breaking & pit stops, quest realm, ruby gem patches, weekly trophy income,
+   rainbow trophy, night/blood moon, freeze horn, rewind, lucky blocks/harpoon/shield, mini-map, qualifying lanes, Dad Mode.
+   Save data has a `version` field so it can be upgraded later. */
+if(!myCar())show('garage');else show('home');
+</script></body></html>
