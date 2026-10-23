@@ -15,7 +15,7 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 - The race view is now a pseudo-3D road in the style of OutRun. It has curves, hills, red and white curbs, a dashed centre line, a checkered start line, and painted zoom pads.
 - Each map has its own sky, sun or moon, and a far background that scrolls more slowly than the road (parallax): hills, mesas, a city skyline, or planets.
 - Roadside scenery is scaled with distance and changes per map: trees, bushes and signs (Grassland); cacti, rocks and tumbleweeds (Desert); buildings and lamps (City); planets and crystals (Space).
-- All cars are pixel-art sprites drawn in code and seen from behind. They show your paint colour and tire colour by tier. Flames come out when you boost and wings come out when you fly. There are special shapes for the Rocket, Shark, Dragon, Unicorn, Hover, Truck, Bug and Police cars, plus a see-through friendly Ghost Car. One bot is a police-style car with a flashing light.
+- (Round 3: all cars are now drawn smooth and 3D-style; see "Car names and realistic cars" below.) Cars are drawn in code and seen from behind. They show your paint colour and tire colour by tier. Flames come out when you boost and wings come out when you fly. There are special shapes for the Rocket, Shark, Dragon, Unicorn, Hover, Truck, Bug and Police cars, plus a see-through friendly Ghost Car. One bot is a police-style car with a flashing light.
 - Night mode has glowing neon curbs, stars, headlights and lit windows. A blood moon appears on some nights.
 - Rain and snow are drawn on screen and change how the car handles.
 - The canvas uses devicePixelRatio, capped at about 2.6 million pixels so the iPad stays smooth. The headless test ran at 61 fps.
@@ -24,9 +24,9 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 - Garage with stat bars (Speed, Boost, Handling, Grip, Flying) and tabs: Cars, Tires, Boost, Wings, Horns, Paint, My parts.
 - In My parts you can equip a part, upgrade it in place (gold → diamond → amethyst → ruby), fix it, patch it, or sell it.
 - On the track: coins, zoom pads, and cones or hay bales. Hitting a cone or bale costs tire durability and shows an "OOPS!" pop.
-- Big touch buttons (◀ ▶ FLY BOOST BRAKE, plus GO, horn, ITEM, PIT and quit) and keyboard controls: arrows or WASD, Space = fly, Shift or B = boost, H = horn, E = item, P = pit.
+- Drag-to-drive (see below) is now the main control. The big touch buttons (◀ ▶ FLY BOOST BRAKE, plus GO, horn, ITEM, PIT and quit) are an Options choice. Keyboard controls: arrows or WASD, Space = fly, Shift or B = boost, H = horn, E = item, P = pit.
 - Press FLY and BOOST together for a big jump over about two cars. If you land on a car, you bounce up and forward.
-- Auto-GO is in Options and is on by default.
+- Auto-GO is in Options. It is on by default for buttons mode and off by default for drag mode.
 - The results screen shows a money breakdown and new unlocks. When you win, you get a trophy and pick one part out of three.
 - The Ghost Car gets one "Ghost Zoom" per race that passes through cars, and it has a weird honk.
 - You must beat the practice test before real races unlock. Before each race you vote for a map.
@@ -45,10 +45,10 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 
 **Safety**: No violence or scary content. The ghost is friendly. There is no real money, nothing online, no chat, and no personal information. Everything is saved only on the iPad (localStorage).
 
-## Rocket Car Family (23 Oct 2026, built locally, NOT pushed)
+## Rocket Car Family (23 Oct 2026, live on GitHub Pages since commit `4669d84`)
 Six new rocket cars in the garage Cars tab, **$5,000 each**, bought through the one `spend()` check (the button says "Need $X more" and a forced buy is refused). They all have the same stats (speed 1.12, handling 1.1, grip 1.1); only the power and look differ. Each has a nose fin, side fins, a stripe and exhaust colour of its own, and keeps its own body colour (paint doesn't change it).
 
-**One big 🚀 ROCKET button** (above BOOST, or press R), shown only when you drive a family rocket. It works **once per race** and greys out after you use it. I picked a new button instead of reusing BOOST so BOOST, FLY and the fly+boost jump still work the way Archer knows. I picked once per race because it's the easiest rule for a kid, it matches the Ghost Car's one Ghost Zoom, and choosing when to use it is part of the fun.
+**One big 🚀 ROCKET button** (above BOOST, or press R; in drag mode: double-tap your car), shown only when you drive a family rocket. It works **once per race** and greys out after you use it. I picked a new button instead of reusing BOOST so BOOST, FLY and the fly+boost jump still work the way Archer knows. I picked once per race because it's the easiest rule for a kid, it matches the Ghost Car's one Ghost Zoom, and choosing when to use it is part of the fun.
 
 | Car | Power | Garage line |
 |---|---|---|
@@ -63,11 +63,27 @@ Six new rocket cars in the garage Cars tab, **$5,000 each**, bought through the 
 - All the numbers live in the commented `ROCKETS` list (and `ROCKET_PRICE`) in `src/p2.js`. Powers are in `doRocket()`/`update()`/`updateBots()` (`src/p4.js`) and drawn in `drawPlayer()` (`src/p5.js`).
 - Nothing violent: powers only slow, float, bounce or collect.
 
-## Red Racer (23 Oct 2026)
-- New garage car **Red Racer**, **$1,500** (same step as the Lightning Bolt, no unlock needed). Speed 1.07, handling 1.1, grip 1.05. Bought through the one `spend()` check, so it can't be bought with less than $1,500 ("Need $X more").
-- It is the only car drawn smooth instead of pixel blocks: canvas curves, a low wedge body, gradient red paint with shine, tinted windows with a highlight streak, a soft shadow. From behind (race): slim tail lights with a light bar, diffuser, twin chrome exhausts, fat tyres. In the garage: a side view with a headlight, door seams, a mirror, and wheels with rims, spokes, sidewalls and red calipers.
-- It is drawn once onto offscreen canvases with smaller pre-shrunk copies (`redRacerRear()`/`redRacerSide()` in `src/p3.js`), so it stays smooth on iPad. It keeps its red; paint doesn't change it. The other cars are unchanged.
-- Tests: Cars tab shows it, refused at $1,499, bought at $1,500, a race with it finishes, zero console errors. Screenshots: `shots/redcar-garage.png`, `shots/redcar-race.png`.
+## Drag-to-drive (Round 3, 23 Oct 2026, from Archer's feedback)
+Driving is now like pushing a toy car. It's the default for everyone, including old saves. No buttons are needed to drive.
+- **Put your finger on your car and push it up the screen to go.** The further you push, the faster you go: a half push means about half speed, and a full push (about a fifth of the screen height) means top speed.
+- **Slide left or right to steer.** It's smooth: a small slide means a gentle turn.
+- **Pull back to brake. Let go to coast** and slow down gently.
+- **Quick flick up = BOOST.** **Tap the car = FLY.** A tap while you're boosting does the big fly+boost jump. **Double-tap = 🚀 ROCKET** on the rocket-family cars. On those cars a single tap waits about a third of a second to check for a second tap, so a double-tap never makes you hop first.
+- I chose "tap = fly" and "flick up = boost" because "flick up" and "flick forward" are the same direction on a screen. A tap is the easiest move for a kid, and the flick feels like flinging the car forward.
+- **Big touch target:** the whole area around and above the car, down to the bottom of the screen. That's about 680 × 430 px on an iPad, so a thumb anywhere near the car works.
+- **First-time hint:** a big "👆 Put your finger on the car and push!" banner with a bouncing arrow. It goes away after your first real push, and that is saved. While you push, a green line from your finger shows the push (it turns red when you brake).
+- **Buttons are still there:** Options → *Driving: Drag / Buttons*. *Buttons* brings back all the old touch buttons exactly as before. In drag mode only horn, ITEM, PIT and quit stay on screen.
+- **Auto-GO** is saved separately for each mode: it's off by default in drag mode, so it never fights your finger, and on by default in buttons mode, as before. The Auto-GO option changes the setting for the mode you're in.
+- **Keyboard** works in both modes: arrows or WASD to drive and steer, plus all the old keys (Space fly, Shift/B boost, R rocket, H horn, E item, P pit). **Mouse drag** works on desktop the same way as a finger.
+- Code: `DRAG` state and the throttle/steer/brake mixing in `update()` (`src/p4.js`); the pointer handling, `TUNE` distances and timings, and the hint in the "DRAG-TO-DRIVE" block at the end of `src/p5.js`.
+
+## Car names and realistic cars (Round 3, 23 Oct 2026)
+- **Rename:** the red sports car (it was "Red Racer") is now **Mini Bug**, Archer's priority car. The older little $300 starter car (it was "Mini Bug") is now **Little Beetle**.
+- **Save safety:** the cars got new ids that were never used before. Old `redracer` becomes `minibug`, and old `bug` becomes `beetle` (`CAR_ID_MAP` in `src/p2.js`, used for v2 saves and old Round 1 saves). A new id never reuses an old one, so nobody's car gets swapped and it is safe to run twice. Your equipped car stays equipped. Tested.
+- **Every car is now drawn smooth, like a little 3D toy**, both from behind (race) and from the side (garage, home, Cars tab): round wheels with shiny rims, spokes, a brake disc and a red caliper, plus a sidewall ring in your tyre-tier colour. They have shiny tinted glass with highlight streaks and chrome trim, glowing headlights and tail lights, a third brake light, reversing lights, door seams and handles, mirrors, gradient paint with a shoulder shine and dark edges for roundness, soft shadows, bumpers, exhausts and number plates.
+- The special looks are kept: the rocket family keep their own colours, nose fin, side fins, stripe and glowing flame nozzles. The Shark has its fin, the Dragon its green spikes and scales, and the Unicorn its gold horn and rainbow stripe. The Police car has its light bar (it still flashes in races) and its POLICE panel. The Truck has big wheels, springs, a bull bar and an exhaust stack, the Hover car has glowing pads, and the Little Beetle has round fenders and engine louvres. The Ghost Car is still see-through with cute eyes and a wavy skirt. Bots use the same art.
+- **Mini Bug has the most detail:** a low wedge body with a rear wing, LED tail lights with dots and a light bar, a third brake light, a demister and rear wiper, a chrome badge, a MINI BUG plate, a carbon diffuser, quad exhausts and rims peeking out with calipers. From the side it has an LED headlight with a DRL, a bonnet line, fender and side vents, a fuel cap, chrome window trim, 10-spoke rims with drilled discs, and tyre lettering. It keeps its red.
+- **Performance:** each car is drawn once onto an offscreen canvas at high resolution and cached, with pre-shrunk copies (mips), so a race just copies images (`carSprite`/`carSide` in `src/p3.js`). The headless run still shows 61 fps.
 
 ## Open idea from Archer (not built)
 - A **quest man** who gives gem pieces by colour: red = ruby, green = emerald, gold = gold, blue = diamond. **Emerald isn't a tier yet**; it's for Round 3.
@@ -121,6 +137,8 @@ Six new rocket cars in the garage Cars tab, **$5,000 each**, bought through the 
 - An old `raceToWin_v1` save (Round 1) is carried over automatically: money, wins, races, practice pass, cars, parts and trophies. Rims were removed, so they are refunded at 50%. The test checked this.
 
 ## Test results (headless Chromium, iPad landscape 1180×820 @2x with touch)
+**Round 3 (drag-to-drive, car art, rename), 23 Oct: all 77 checks passed with zero console errors.** The new checks: drag mode is the default and Auto-GO is off, so the car waits for your finger. Drag mode hides the driving buttons, and the touch target is generous. A real touch drag drives the car, and pushing further is faster. Touch drag steers both ways, letting go coasts, and pulling back brakes. A flick boosts, a tap flies, and a double-tap fires the rocket (without a hop). The Options toggle works, and the old buttons come back in buttons mode. A mouse drag drives and steers on desktop, and the keyboard still works in drag mode (arrows, WASD, B, Space). The rename and migration were checked for v2 saves, for v1 saves, and for running twice. All 18 cars render a rear and a side view, and every car drives in a race. Screenshots are in `shots/drag-*.png` and `shots/cars-*.png` (`cars-sheet.png` shows every car from the side and the rear).
+
 **Rocket family run (23 Oct): all 49 checks passed with zero console errors.** The new checks: a rocket can't be bought at $4,999 (the button is grey and a forced buy is refused), and each rocket can be bought at exactly $5,000 with a tap. For each car, the ROCKET button is visible and tapped by real touch, its power does its thing, and a second tap doesn't restart it. A normal car has no ROCKET button. Screenshots are in `shots/rockets-*.png`.
 
 Before that, all 22 Round 2 checks passed, with **zero console errors**. See `tests/last-run.txt`. The checks covered:
@@ -144,6 +162,8 @@ Before that, all 22 Round 2 checks passed, with **zero console errors**. See `te
 - Rocket family: the Sky Sparkle car flies about the same height as a normal jump, so it doesn't look very high. The ROCKET button sits close to the mini-map and FLY, so check it with Archer's thumbs. Each power lasts 5–8 s; tune that with Archer.
 - The bots follow simple lanes and don't steer around cones.
 - Bumps between cars are soft: you just slow down behind a car.
+- Drag-to-drive tuning to try with Archer: the push distance for full speed (`TUNE.fullPush`, now 22% of the short screen side), steering sensitivity (`TUNE.fullSteer`), and the flick speed. Check that a tap to fly doesn't happen by accident when a kid just touches the car.
+- The cars are drawn smooth now, but the roadside scenery is still pixel art; that mix is on purpose for now.
 - Real iPad Safari hasn't been tested yet; only an emulated iPad was used. Please check that it feels like 60 fps and that the button positions suit Archer's thumbs.
 - The design doc says gold parts last about 2,000 races, so gold breaks less often than diamond, amethyst and ruby. This is kept as written. Ask Archer if that's intended.
 - Rain or snow is rolled when you open the map vote, not per map.
