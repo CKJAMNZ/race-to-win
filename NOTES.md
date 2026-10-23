@@ -6,7 +6,7 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 - `index.html` – the whole game in one file. It works when opened straight from disk or from any static host.
 - `index-round1.html` – the original Round 1 build, kept as a backup.
 - `src/p1.html … p6.js` – the same code split into readable chunks. `index.html` is built by joining them:
-  `cat src/p1.html src/p2.js src/p3.js src/p4.js src/p5.js src/p6.js > index.html`
+  `cat src/p1.html src/p2.js src/p3.js src/p4.js src/p5.js src/p6.js > index.html` (or run `./build.sh`, which does the same)
 - `tests/play.js` – headless play-through (Playwright, iPad landscape with touch). `tests/last-run.txt` holds the last result.
 - `shots/` – screenshots from the test run.
 
@@ -44,6 +44,27 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 - Also done early from Round 3: weekly trophy pay, the rainbow trophy giving luckier spins, and the Rocket Car for 10 wins in a row.
 
 **Safety**: No violence or scary content. The ghost is friendly. There is no real money, nothing online, no chat, and no personal information. Everything is saved only on the iPad (localStorage).
+
+## Rocket Car Family (23 Oct 2026, built locally, NOT pushed)
+Six new rocket cars in the garage Cars tab, **$5,000 each**, bought through the one `spend()` check (the button says "Need $X more" and a forced buy is refused). They all have the same stats (speed 1.12, handling 1.1, grip 1.1); only the power and look differ. Each has a nose fin, side fins, a stripe and exhaust colour of its own, and keeps its own body colour (paint doesn't change it).
+
+**One big 🚀 ROCKET button** (above BOOST, or press R), shown only when you drive a family rocket. It works **once per race** and greys out after you use it. I picked a new button instead of reusing BOOST so BOOST, FLY and the fly+boost jump still work the way Archer knows. I picked once per race because it's the easiest rule for a kid, it matches the Ghost Car's one Ghost Zoom, and choosing when to use it is part of the fun.
+
+| Car | Power | Garage line |
+|---|---|---|
+| Zoom Rocket (red/gold) | 1.6× top speed for 5 s, plus road magnets pull you back on the road for 10 s | Super ZOOM for 5 seconds, and road magnets keep you on the road for 10! |
+| Sky Sparkle Rocket (ice blue) | Hovers high for 5 s, see-through with sparkles; cones and cars can't touch it | Fly up high and go see-through and sparkly - nothing can touch you for 5 seconds! |
+| Smoky (grey, Archer's name) | Fluffy smoke-puff cloud for 6 s; cars just behind slow to 60% | Puffs a big fluffy smoke cloud - cars behind you slow down to peek through it! |
+| Coin Magnet Rocket (gold) | Grabs every coin near you, any lane, for 8 s | A giant magnet pulls in every coin near you for 8 seconds - cha-ching! |
+| Boing Boing Rocket (green) | Three giant bouncy jumps over the cars | Three giant bouncy jumps right over the other cars! |
+| Slow-Mo Bubble Rocket (purple) | Every other car goes at half speed for 6 s | Pops a giant bubble - every other car goes slooow-mo for 6 seconds! |
+
+- The original **Rocket Car** is still prize-only for 10 wins in a row. It's labelled "👑 Boss of the Rocket Family!" and has no ROCKET button (its prize is top speed 1.42).
+- All the numbers live in the commented `ROCKETS` list (and `ROCKET_PRICE`) in `src/p2.js`. Powers are in `doRocket()`/`update()`/`updateBots()` (`src/p4.js`) and drawn in `drawPlayer()` (`src/p5.js`).
+- Nothing violent: powers only slow, float, bounce or collect.
+
+## Open idea from Archer (not built)
+- A **quest man** who gives gem pieces by colour: red = ruby, green = emerald, gold = gold, blue = diamond. **Emerald isn't a tier yet**; it's for Round 3.
 
 ## ECONOMY in plain words (the `ECONOMY` object at the top of the code)
 - You start with **$1,000**. Archer also starts with the Ghost Car, as the design doc says.
@@ -94,7 +115,9 @@ Game designer: Archer · Producer/tester: Jeff · Build: Round 2 (23 Oct 2026)
 - An old `raceToWin_v1` save (Round 1) is carried over automatically: money, wins, races, practice pass, cars, parts and trophies. Rims were removed, so they are refunded at 50%. The test checked this.
 
 ## Test results (headless Chromium, iPad landscape 1180×820 @2x with touch)
-All 22 checks passed, with **zero console errors**. See `tests/last-run.txt`. The checks covered:
+**Rocket family run (23 Oct): all 49 checks passed with zero console errors.** The new checks: a rocket can't be bought at $4,999 (the button is grey and a forced buy is refused), and each rocket can be bought at exactly $5,000 with a tap. For each car, the ROCKET button is visible and tapped by real touch, its power does its thing, and a second tap doesn't restart it. A normal car has no ROCKET button. Screenshots are in `shots/rockets-*.png`.
+
+Before that, all 22 Round 2 checks passed, with **zero console errors**. See `tests/last-run.txt`. The checks covered:
 - the old save migrating
 - the too-poor purchase being refused
 - buying a car and a part
@@ -112,6 +135,7 @@ All 22 checks passed, with **zero console errors**. See `tests/last-run.txt`. Th
 - **Round 4:** friend races and Dad Mode (wobbly wheel) on the same iPad, then trading. Trading needs an offline design, such as pass-and-play.
 
 ## Known issues / things to tune with Archer
+- Rocket family: the Sky Sparkle car flies about the same height as a normal jump, so it doesn't look very high. The ROCKET button sits close to the mini-map and FLY, so check it with Archer's thumbs. Each power lasts 5–8 s; tune that with Archer.
 - The bots follow simple lanes and don't steer around cones.
 - Bumps between cars are soft: you just slow down behind a car.
 - Real iPad Safari hasn't been tested yet; only an emulated iPad was used. Please check that it feels like 60 fps and that the button positions suit Archer's thumbs.

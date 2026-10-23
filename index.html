@@ -27,6 +27,7 @@ h2{margin:6px 0 10px;font-size:28px}
 .lock{opacity:.6}.muted{opacity:.8;font-size:15px}.big{font-size:26px;font-weight:800}
 #pad{position:fixed;inset:0;pointer-events:none;display:none}
 #pad .tb{position:absolute;pointer-events:auto;touch-action:none;border-radius:50%;font:inherit;font-weight:900;color:#fff;background:#0007;border:4px solid #fff8;font-size:20px;display:flex;align-items:center;justify-content:center}
+#pad .tb[data-k=rocket]{background:#ff3b3bcc;border-color:#ffd23f;font-size:18px}#pad .tb.used{opacity:.35}
 #pad .tb.down{background:#ffd23fcc;color:#222}
 #pop{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:#000c;padding:20px 28px;border-radius:20px;font-size:26px;font-weight:800;text-align:center;display:none;z-index:9;max-width:90vw}
 table.odds{border-collapse:collapse;font-size:17px}table.odds td{padding:3px 8px}
@@ -124,6 +125,32 @@ const CARS = [ // speed = top speed multiplier; handle/grip around 1
   { id: 'unicorn',name: 'Unicorn Speedster', price: 10000, speed: 1.34, handle: 1.25, grip: 1.25, shape: 'unicorn', un: { wins: 12 } },
   { id: 'rocket', name: 'Rocket Car',     price: 0,    speed: 1.42, handle: 1.2,  grip: 1.2,  shape: 'rocket', un: { streak: 10 }, prizeOnly: true },
 ];
+/* ================= ROCKET CAR FAMILY =================
+   Every family car costs ROCKET_PRICE in the garage Cars tab (bought through the one spend() money check).
+   Driving one shows a big 🚀 ROCKET button. Each car's power works ONCE per race (tap again next race).
+   ability = what the power does (see doRocket() and update() in the race code)
+   secs    = how long the power lasts, in seconds
+   look    = pixel-art colours: body, fin colour, stripe, flame colour
+   desc    = one line for kids, shown in the garage
+   The original Rocket Car (10 wins in a row) is the family's big boss and stays prize-only. */
+const ROCKET_PRICE = 5000;
+const ROCKETS = [
+  { id: 'rzoom', name: 'Zoom Rocket', ability: 'zoom', secs: 5, lockSecs: 10, zoomPow: 1.6, pop: '🚀 ZOOM ROCKET!',
+    desc: 'Super ZOOM for 5 seconds, and road magnets keep you on the road for 10!', look: { body: '#ff3b3b', fin: '#ffd23f', stripe: '#ffffff', flame: '#ffb21f' } },
+  { id: 'rsky', name: 'Sky Sparkle Rocket', ability: 'sky', secs: 5, flyHeight: 450, pop: '✨ SKY SPARKLE!',
+    desc: 'Fly up high and go see-through and sparkly - nothing can touch you for 5 seconds!', look: { body: '#7fe6ff', fin: '#ffffff', stripe: '#ff66c4', flame: '#c8f0ff' } },
+  { id: 'rsmoky', name: 'Smoky', ability: 'smoke', secs: 6, slowTo: 0.6, range: 10000, pop: '💨 SMOKY PUFF!',
+    desc: 'Puffs a big fluffy smoke cloud - cars behind you slow down to peek through it!', look: { body: '#9a9aa8', fin: '#4a4a58', stripe: '#ffd23f', flame: '#dddddd' } },
+  { id: 'rmagnet', name: 'Coin Magnet Rocket', ability: 'magnet', secs: 8, reachSegs: 10, pop: '🧲 COIN MAGNET!',
+    desc: 'A giant magnet pulls in every coin near you for 8 seconds - cha-ching!', look: { body: '#ffd23f', fin: '#ff3b3b', stripe: '#3b5bff', flame: '#ff8c00' } },
+  { id: 'rboing', name: 'Boing Boing Rocket', ability: 'bounce', secs: 5, bounces: 3, jumpPow: 1.5, pop: '🦘 BOING BOING!',
+    desc: 'Three giant bouncy jumps right over the other cars!', look: { body: '#5cff7a', fin: '#b066ff', stripe: '#ffffff', flame: '#ff66c4' } },
+  { id: 'rbubble', name: 'Slow-Mo Bubble Rocket', ability: 'bubble', secs: 6, slowTo: 0.5, pop: '🫧 SLOW-MO BUBBLE!',
+    desc: 'Pops a giant bubble - every other car goes slooow-mo for 6 seconds!', look: { body: '#b066ff', fin: '#7fe6ff', stripe: '#ffffff', flame: '#7fe6ff' } },
+];
+ROCKETS.forEach(r => CARS.push({ id: r.id, name: r.name, price: ROCKET_PRICE, speed: 1.12, handle: 1.1, grip: 1.1, shape: 'r_' + r.id, rocket: r, body: r.look.body }));
+const carPaint = (b, mine) => b.ghost ? '#cfe8ff' : b.body || (mine ? S.paint : '#ff8c00');   // family rockets keep their own colours
+
 const PART_KINDS = { tire: '🛞 Tires', boost: '🔥 Boost', wing: '🪽 Wings', horn: '📯 Horn' };
 const PART_NAMES = {
   tire:  [['Bumpy', 'Sticky'], ['Golden Grip', 'Sun Spinner'], ['Diamond Tread', 'Ice Sparkle'], ['Purple Paw', 'Magic Grip'], ['Ruby Roller', 'Lava Wheel']],
@@ -265,6 +292,11 @@ function carSprite(shape, paint, tire) {
   if (shape === 'police') { px(12, cy - 2, 8, 2, '#2f6bff'); px(20, cy - 2, 8, 2, '#ff2f4f'); px(4, by + 6, 32, 1, '#fff'); }
   if (shape === 'shark') { px(19, cy - 6, 2, 6, shade(paint, -30)); px(18, cy - 3, 1, 3, shade(paint, -30)); }
   if (shape === 'rocket') { px(19, cy - 8, 2, 8, '#ff8c00'); px(5, by - 3, 4, 3, '#ccc'); px(31, by - 3, 4, 3, '#ccc'); }
+  if (shape.startsWith('r_')) {   // rocket family: nose fin, side fins, stripe (colours from ROCKETS)
+    const L = CARS.find(c => 'r_' + c.id === shape).rocket.look;
+    px(18, cy - 9, 4, 9, L.fin); px(19, cy - 11, 2, 2, L.stripe); px(2, by - 4, 4, 8, L.fin); px(34, by - 4, 4, 8, L.fin);
+    px(4, by + 7, 32, 2, L.stripe); px(13, 25, 3, 3, L.flame); px(24, 25, 3, 3, L.flame);
+  }
   if (shape === 'unicorn') { px(19, cy - 6, 2, 2, '#ffd23f'); px(19, cy - 4, 2, 2, '#ff66c4'); px(18, cy - 2, 4, 2, '#5bd0ff'); }
   if (shape === 'dragon') [11, 16, 21, 26].forEach(x => px(x, cy - 2, 3, 2, '#5cff7a'));
   if (shape === 'ghost') { px(14, cy + 3, 3, 3, '#223'); px(23, cy + 3, 3, 3, '#223'); px(15, cy + 3, 1, 1, '#fff'); px(24, cy + 3, 1, 1, '#fff'); } // friendly ghost eyes
@@ -404,7 +436,7 @@ function startRace(opts) {
     weather: opts.weather || 'sun',
     laps: mode === 'qualify' ? 1 : DIFFICULTY.laps[mode === 'practice' ? 'practice' : map.id],
     phase: 'count', count: 3, t: 0, stats: playerStats(), coins: 0, pitPaid: 0, pops: [], item: null, broke: [], skyX: 0, frame: 0, bots: [],
-    p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, hornUsed: false,
+    p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, rocketT: 0, lockT: 0, rocketUsed: false, bounceLeft: 0, hornUsed: false,
       fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
   };
   const skills = mode === 'practice' ? [DIFFICULTY.practiceBot] : mode === 'qualify' ? [] : DIFFICULTY.mapSkill[map.id].map(s => s * lvl);
@@ -435,10 +467,12 @@ function update(dt) {
   // weather: rain = slippy, snow = slower but grippy
   const grip = st.grip * (R.weather === 'rain' ? 0.7 : R.weather === 'snow' ? 1.25 : 1);
   let top = st.max * (R.weather === 'snow' ? 0.9 : 1);
-  ['boostT', 'zoomT', 'shieldT', 'ghostT', 'glideT'].forEach(k => p[k] = Math.max(0, p[k] - dt));
+  ['boostT', 'zoomT', 'shieldT', 'ghostT', 'glideT', 'rocketT', 'lockT'].forEach(k => p[k] = Math.max(0, p[k] - dt));
   if (p.boostT > 0) top *= space ? 1.08 : st.boostPow;   // in space boost is weaker but lifts you a little
   if (p.ghostT > 0) top *= 1.7;
   if (p.zoomT > 0) top *= 1.3;
+  const rk = rocketOn();                                  // rocket family power, if one is running
+  if (rk && rk.ability === 'zoom') top *= rk.zoomPow;
   if (isBroken('tire')) top *= 0.85;
   if (p.shieldT > 0 && isBroken('tire')) fixTire('Shield fixed your tire! 🛡️');
   if (p.pitT > 0) { p.pitT -= dt; p.speed = 0; updateBots(dt); ranking(); return; }   // sitting in the pit
@@ -454,15 +488,20 @@ function update(dt) {
   if (p.speed > top) p.speed = Math.max(top, p.speed - BASE_MAX * 0.6 * dt);
   if (Math.abs(p.x) > 1.05 && p.air <= 0 && p.speed > st.max / 3) p.speed -= BASE_MAX * 1.2 * dt;   // grass is slow
   p.x = clamp(p.x, -2.2, 2.2); p.speed = Math.max(0, p.speed);
+  if (p.lockT > 0 && Math.abs(p.x) > 0.85) p.x = lerp(p.x, Math.sign(p.x) * 0.85, Math.min(1, dt * 10));   // Zoom Rocket: pulled back onto the road
+  if (rk && rk.ability === 'sky') { p.air = lerp(Math.max(p.air, 1), rk.flyHeight, Math.min(1, dt * 4)); p.vy = 0; }   // Sky Sparkle: hover high
   // jumping and flying
-  if (p.air > 0 || p.vy > 0) {
+  if ((p.air > 0 || p.vy > 0) && !(rk && rk.ability === 'sky')) {
     const grav = (space ? 2200 : 5000) * (p.glideT > 0 && p.vy < 0 ? 0.2 : 1);
     p.air += p.vy * dt; p.vy -= grav * dt;
     if (space && p.boostT > 0) p.vy += 600 * dt;
-    if (p.air <= 0) { p.air = 0; p.vy = 0; landOnCar(); }
+    if (p.air <= 0) { p.air = 0; p.vy = 0; landOnCar();
+      if (p.bounceLeft > 0 && p.air <= 0) { p.bounceLeft--; p.vy = R.stats.jumpV * myBase().rocket.jumpPow; p.air = 1; addPop('BOING!', '#5cff7a'); sound('tap'); } }   // Boing Boing: bounce again
   }
   // move forward, checking every segment we pass (so nothing is skipped at high speed)
   const before = p.dist; p.dist += p.speed * dt;
+  if (rk && rk.ability === 'magnet') for (let z = 0; z < rk.reachSegs; z++) findSeg(p.dist + z * SEG).items.forEach(it => {   // Coin Magnet: grab every coin nearby, any lane
+    if (it.type === 'coin' && !it.taken) { it.taken = true; R.coins++; sound('coin'); } });
   for (let z = Math.floor(before / SEG) + 1; z <= Math.floor(p.dist / SEG); z++) touchSegment(findSeg(z * SEG));
   // laps, pit stop, finish line
   const lap = Math.floor(p.dist / len) + 1;
@@ -485,7 +524,7 @@ function touchSegment(seg) {
     if (p.air > 150) return;                                     // flew right over it!
     it.taken = true;
     if (it.type === 'block') { luckyBlock(); return; }
-    if (p.shieldT > 0 || p.ghostT > 0) { addPop('Blocked! 🛡️', '#5bd0ff'); return; }  // cone or hay bale
+    if (p.shieldT > 0 || p.ghostT > 0 || rocketSafe()) { addPop('Blocked! 🛡️', '#5bd0ff'); return; }  // cone or hay bale
     p.speed *= 0.55; p.tireHP = Math.max(0, p.tireHP - 15); addPop('OOPS!', '#ff7a8a'); sound('oops');
     if (p.tireHP <= 0 && S.equip.tire && !isBroken('tire')) breakPart('tire');
   });
@@ -495,7 +534,7 @@ function landOnCar() {     // landing on a car bounces you up and forward (desig
     if (Math.abs(b.dist - p.dist) < SEG * 1.5 && Math.abs(b.x - p.x) < 0.35) { p.vy = 900; p.air = 1; p.dist += SEG * 2; addPop('BOING!', '#ffd23f'); } });
 }
 function bumpCars() {      // friendly bumps: you just slow down behind a car, nobody gets hurt
-  const p = R.p; if (p.air > 0 || p.ghostT > 0) return;
+  const p = R.p; if (p.air > 0 || p.ghostT > 0 || rocketSafe()) return;
   R.bots.forEach(b => { const d = b.dist - p.dist;
     if (d > 0 && d < SEG * 1.2 && Math.abs(b.x - p.x) < 0.33 && p.speed > b.speed) { p.speed = b.speed * 0.92; p.x += p.x < b.x ? -0.04 : 0.04; } });
 }
@@ -508,6 +547,9 @@ function updateBots(dt) {
     target *= 1 - Math.min(0.12, Math.abs(findSeg(b.dist).curve) * 0.02);   // bots slow down a bit on bends
     if (R.weather === 'snow') target *= 0.9;
     if (b.gooT > 0) target *= 0.55;
+    const rk = rocketOn();   // rocket family powers that slow other cars (nobody gets hurt)
+    if (rk && rk.ability === 'bubble') target *= rk.slowTo;   // Slow-Mo Bubble: every other car in slow motion
+    if (rk && rk.ability === 'smoke' && gap < 0 && gap > -rk.range) target *= rk.slowTo;   // Smoky: cars behind slow down in the puff cloud
     if (b.freezeT > 0) target = 0;
     b.speed += clamp(target - b.speed, -BASE_MAX * 1.5 * dt, BASE_MAX / 5 * dt);
     b.dist += b.speed * dt;
@@ -537,6 +579,18 @@ function doBoost() {
   }
   if (p.fuel < R.stats.fuelUse) { addPop('Low fuel! Tap PIT', '#ff7a8a'); return; }
   p.fuel -= R.stats.fuelUse; p.boostT = R.stats.turbo; addPop('BOOST!', '#ffb21f');
+}
+// Rocket family: the big 🚀 ROCKET button. One use per race.
+const rocketOn = () => { const r = R && myBase().rocket; return r && R.p.rocketT > 0 ? r : null; };
+const rocketSafe = () => { const r = rocketOn(); return !!r && r.ability === 'sky'; };   // Sky Sparkle can't hit anything
+function doRocket() {
+  const p = R && R.p, r = myBase().rocket; if (!canAct() || !r || p.pitT > 0) return;
+  if (p.rocketUsed) { addPop('Rocket used - next race!', '#cccccc'); return; }
+  p.rocketUsed = true; p.rocketT = r.secs; addPop(r.pop, r.look.body); sound('go');
+  if (r.lockSecs) p.lockT = r.lockSecs;
+  if (r.ability === 'bounce') { p.vy = R.stats.jumpV * r.jumpPow; p.air = 1; p.glideT = 0; p.bounceLeft = r.bounces - 1; }   // first big boing
+  if (r.ability === 'zoom') p.speed = Math.max(p.speed, R.stats.max * r.zoomPow);   // instant big kick
+  layoutPad();
 }
 function carAhead(range) { let best = null; R.bots.forEach(b => { const d = b.dist - R.p.dist; if (d > 0 && d < range && (!best || d < best.dist - R.p.dist)) best = b; }); return best; }
 function doHorn() {
@@ -702,9 +756,21 @@ function drawPlayer(horizon) {
     g.drawImage(wing, cx - cw / 2 - ww * 0.8, carY - cw * 0.55, ww, wh);
     g.save(); g.translate(cx + cw / 2 + ww * 0.8, 0); g.scale(-1, 1); g.drawImage(wing, 0, carY - cw * 0.55, ww, wh); g.restore();
   }
-  const see = b.ghost || p.ghostT > 0 ? 0.6 : 0;   // ghost car is see-through
-  drawSprite(carSprite(b.shape, b.ghost ? '#cfe8ff' : S.paint, tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
-  if (p.boostT > 0 || p.ghostT > 0 || p.zoomT > 0) {   // flames from the exhausts
+  const rk = rocketOn();
+  const see = b.ghost || p.ghostT > 0 ? 0.6 : rk && rk.ability === 'sky' ? 0.5 + 0.15 * Math.sin(R.t * 12) : 0;   // ghost car + Sky Sparkle are see-through
+  drawSprite(carSprite(b.shape, carPaint(b, true), tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
+  if (rk && rk.ability === 'sky') for (let i = 0; i < 14; i++) {   // sparkles
+    const a = i * 2.4 + R.t * 3, rr = cw * (0.45 + 0.2 * Math.sin(R.t * 5 + i));
+    g.fillStyle = ['#ffffff', '#ffd23f', '#ff66c4', '#7fe6ff'][i % 4]; g.fillRect(cx + Math.cos(a) * rr, carY - cw * 0.35 + Math.sin(a) * rr * 0.6, 4 * K, 4 * K);
+  }
+  if (rk && rk.ability === 'smoke') for (let i = 0; i < 9; i++) {   // big friendly puff cloud behind the car
+    const ph = (R.t * 1.5 + i / 9) % 1, r = cw * (0.15 + ph * 0.45);
+    g.fillStyle = 'rgba(235,235,245,' + (0.75 - ph * 0.6) + ')'; g.beginPath(); g.arc(cx + Math.sin(i * 1.7) * cw * 0.35 * ph, carY + ph * cw * 0.5, r, 0, 7); g.fill();
+  }
+  if (rk && rk.ability === 'bubble') { g.fillStyle = 'rgba(160,220,255,.18)'; g.strokeStyle = 'rgba(200,240,255,.8)'; g.lineWidth = 3 * K; g.beginPath(); g.arc(cx, carY - cw * 0.3, cw * (0.75 + 0.04 * Math.sin(R.t * 4)), 0, 7); g.fill(); g.stroke(); g.fillStyle = '#ffffffaa'; g.fillRect(cx - cw * 0.45, carY - cw * 0.75, 8 * K, 8 * K); }
+  if (rk && rk.ability === 'magnet') { g.strokeStyle = '#ffd23f'; g.lineWidth = 3 * K; for (let i = 0; i < 3; i++) { g.globalAlpha = 0.7 - ((R.t * 2 + i / 3) % 1) * 0.7; g.beginPath(); g.ellipse(cx, carY - cw * 0.35, cw * (0.4 + ((R.t * 2 + i / 3) % 1) * 0.6), cw * (0.25 + ((R.t * 2 + i / 3) % 1) * 0.35), 0, 0, 7); g.stroke(); } g.globalAlpha = 1; }
+  if (p.lockT > 0) { g.fillStyle = '#6cf08a'; g.globalAlpha = 0.5 + 0.3 * Math.sin(R.t * 10); g.fillRect(cx - cw * 0.62, carY - cw * 0.3, 5 * K, cw * 0.3); g.fillRect(cx + cw * 0.62 - 5 * K, carY - cw * 0.3, 5 * K, cw * 0.3); g.globalAlpha = 1; }
+  if (p.boostT > 0 || p.ghostT > 0 || p.zoomT > 0 || (rk && rk.ability === 'zoom')) {   // flames from the exhausts
     const f = flameSprite((R.frame >> 2) % 2), fw = cw * 0.1;
     [-0.29, 0.29].forEach(o => g.drawImage(f, cx + o * cw - fw / 2, carY - cw * 0.12, fw, fw * 1.8));
   }
@@ -729,6 +795,9 @@ function drawHUD() {
   meter(L, 136 * k, 150 * k, p.tireHP / 100, isBroken('tire') ? '#ff3b3b' : '#6cf08a', isBroken('tire') ? 'Tire BROKEN - tap PIT' : 'Tires');
   let iy = 172 * k; const line = (s, c) => { txt(s, L, iy, 18, c); iy += 24 * k; };
   if (p.shieldT > 0) line('🛡️ Shield ' + Math.ceil(p.shieldT) + 's', '#5bd0ff');
+  const rb = myBase().rocket;
+  if (rb) line(p.rocketT > 0 ? '🚀 ' + rb.name + ' ' + Math.ceil(p.rocketT) + 's' : p.rocketUsed ? '🚀 Rocket used' : '🚀 Tap ROCKET!', rb.look.body);
+  if (p.lockT > 0) line('🛣️ Road magnet ' + Math.ceil(p.lockT) + 's', '#6cf08a');
   if (R.item) line('🟢 Goo blob - tap ITEM', '#6cf08a');
   if (p.pitWanted) line('🔧 Pit stop at the line');
   if (R.weather !== 'sun') line(WEATHER.find(w => w.id === R.weather).name);
@@ -761,11 +830,11 @@ function frame(now) {
 }
 
 /* ================= Controls: keyboard + big touch buttons ================= */
-const KEYMAP = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'brake', s: 'brake', ' ': 'fly', shift: 'boost', b: 'boost', h: 'horn', e: 'item', p: 'pit' };
+const KEYMAP = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'brake', s: 'brake', ' ': 'fly', shift: 'boost', b: 'boost', h: 'horn', e: 'item', p: 'pit', r: 'rocket' };
 function press(name, down) {
   if (down && !keys[name]) {
     if (name === 'fly') doFly(); if (name === 'boost') { if (keys.fly) doFly(); else doBoost(); }
-    if (name === 'horn') doHorn(); if (name === 'item') useItem(); if (name === 'pit' && R) R.p.pitWanted = !R.p.pitWanted;
+    if (name === 'rocket') doRocket(); if (name === 'horn') doHorn(); if (name === 'item') useItem(); if (name === 'pit' && R) R.p.pitWanted = !R.p.pitWanted;
   }
   keys[name] = down;
 }
@@ -774,7 +843,7 @@ addEventListener('keyup', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k) p
 const PAD = [ // name, label, centre x / y as a fraction of the screen, size as a fraction of screen height
   ['left', '◀', 0.08, 0.83, 0.22], ['right', '▶', 0.24, 0.83, 0.22], ['horn', '📯', 0.07, 0.6, 0.1], ['item', 'ITEM', 0.17, 0.6, 0.1],
   ['brake', 'BRAKE', 0.71, 0.9, 0.13], ['up', 'GO', 0.71, 0.72, 0.13], ['fly', 'FLY', 0.8, 0.62, 0.17], ['boost', 'BOOST', 0.91, 0.84, 0.2],
-  ['pit', 'PIT', 0.94, 0.08, 0.1], ['quit', '✖', 0.86, 0.08, 0.08]];
+  ['rocket', '🚀 ROCKET', 0.92, 0.55, 0.17], ['pit', 'PIT', 0.94, 0.08, 0.1], ['quit', '✖', 0.86, 0.08, 0.08]];
 function buildPad() {
   PAD.forEach(([name, label]) => {
     const b = document.createElement('button'); b.className = 'tb'; b.textContent = label; b.dataset.k = name; $('pad').appendChild(b);
@@ -787,7 +856,8 @@ function layoutPad() {
   const w = innerWidth, h = innerHeight;
   document.querySelectorAll('#pad .tb').forEach(b => { const d = PAD.find(q => q[0] === b.dataset.k), s = d[4] * h;
     Object.assign(b.style, { width: s + 'px', height: s + 'px', left: (d[2] * w - s / 2) + 'px', top: (d[3] * h - s / 2) + 'px', fontSize: Math.max(14, s * 0.22) + 'px',
-      display: d[0] === 'up' && S.settings.autoGo ? 'none' : 'flex' }); });
+      display: (d[0] === 'up' && S.settings.autoGo) || (d[0] === 'rocket' && !myBase().rocket) ? 'none' : 'flex' });
+    if (d[0] === 'rocket') b.classList.toggle('used', !!(R && R.p.rocketUsed)); });
 }
 function setPad(on) { $('pad').style.display = on ? 'block' : 'none'; layoutPad(); }
 cv.addEventListener('pointerdown', e => {   // tap the blood moon 100 times = 2.5% faster forever (design doc)
@@ -871,7 +941,7 @@ function garageList() {
     if (own) act = (eq ? '<b>✅ Driving</b>' : btn('Drive', 'equipCar', own.id, 'small blue') + btn('Sell $' + Math.round(c.price * ECONOMY.sellBack), 'sellCar', own.id, 'small red'));
     else if (c.prizeOnly) act = '<div class="muted">' + lockText(c.un) + ' (prize only)</div>';
     else act = open ? priceBtn(c.price, 'buyCar', c.id) : '<div class="muted">' + lockText(c.un) + '</div>';
-    return '<div class="card ' + (eq ? 'on' : '') + (open || own ? '' : ' lock') + '" style="text-align:center">' + preview(120, 90, c.id) + '<div class="big" style="font-size:21px">' + c.name + (c.ghost ? ' 👻' : '') + '</div><div class="muted">Speed ' + c.speed + ' · Handling ' + c.handle + ' · Grip ' + c.grip + '</div>' + act + '</div>';
+    return '<div class="card ' + (eq ? 'on' : '') + (open || own ? '' : ' lock') + '" style="text-align:center">' + preview(120, 90, c.id) + '<div class="big" style="font-size:21px">' + c.name + (c.ghost ? ' 👻' : '') + (c.rocket ? ' 🚀' : '') + '</div>' + (c.rocket ? '<div style="color:#ffd23f;font-weight:700">🚀 ' + c.rocket.desc + '</div>' : c.id === 'rocket' ? '<div style="color:#ffd23f;font-weight:700">👑 Boss of the Rocket Family!</div>' : '') + '<div class="muted">Speed ' + c.speed + ' · Handling ' + c.handle + ' · Grip ' + c.grip + '</div>' + act + '</div>';
   }).join('');
   if (T === 'paint') return '<div class="card" style="max-width:600px;text-align:center"><p>Paint costs $' + ECONOMY.paintPrice + (S.freePaints ? ' · You have ' + S.freePaints + ' free paint 🎨' : '') + (myBase().ghost ? '<br>(The Ghost Car always looks ghostly!)' : '') + '</p>' +
     PAINTS.map(c => '<button data-act="paint" data-arg="' + c + '" style="width:64px;height:64px;border-radius:50%;margin:6px;border:' + (S.paint === c ? '5px solid #ffd23f' : '3px solid #fff5') + ';background:' + c + '"></button>').join('') + '</div>';
@@ -897,7 +967,7 @@ function upgradeCost(p) { return Math.round(ECONOMY.partPrice[TIERS[tierIdx(p.ti
 function drawPreviews() {
   document.querySelectorAll('canvas.prev').forEach(c => {
     const x = c.getContext('2d'), mine = !c.dataset.shape, b = mine ? myBase() : CARS.find(q => q.id === c.dataset.shape), tire = partById(S.equip.tire);
-    const spr = carSprite(b.shape, b.ghost ? '#cfe8ff' : (mine ? S.paint : '#ff8c00'), mine && tire ? TIER_COLOR[tire.tier] : '#2b2b2b');
+    const spr = carSprite(b.shape, carPaint(b, mine), mine && tire ? TIER_COLOR[tire.tier] : '#2b2b2b');
     x.imageSmoothingEnabled = false; x.clearRect(0, 0, c.width, c.height); x.globalAlpha = b.ghost ? 0.7 : 1;
     x.drawImage(spr, c.width * 0.08, c.height * 0.1, c.width * 0.84, c.width * 0.84 * 30 / 40);
   });
@@ -1021,6 +1091,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE };   // for testing only
 </script>
 </body></html>
