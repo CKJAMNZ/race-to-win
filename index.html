@@ -49,7 +49,8 @@ const ECONOMY = {
   startMoney: 1000,          // everyone starts with $1,000 (Archer, 22 Oct)
   dailyCash: 100,            // daily reward cash (plus one wheel spin)
   paintPrice: 50,            // one paint job
-  patchPrice: 250,           // a ruby gem patch fixes any broken part
+  patchPrice: 250,
+  boatPrice: 1500,           // the Boat for the swimming pool: same as the next car step (~5 races)           // a ruby gem patch fixes any broken part
   // Car prices live in the CARS list below. Starter cars are $300-$700,
   // so $1,000 buys a car AND a part. Next car step is $1,500 (~5 races).
   partPrice: { normal: 100, gold: 300, diamond: 800, amethyst: 2000, ruby: 5000 },
@@ -192,7 +193,7 @@ function freshSave() {
   return { v: 2, money: ECONOMY.startMoney, cars: [ghost], parts: [tire], equip: { car: ghost.id, tire: tire.id, boost: null, wing: null, horn: null },
     paint: '#ff2d55', passedTest: false, trophies: [], wins: 0, races: 0, streak: 0, lastDaily: '', luck: { spins: 0, sinceRare: 0, sinceRuby: 0 },
     patches: 0, freePaints: 0, moonTaps: 0, moonBonus: false, lastWeekly: Date.now(), maxMoney: ECONOMY.startMoney,
-    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false };
+    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false, boat: false };   // boat: bought the pool Boat (old saves get false)
 }
 // Round 1 saves are carried over: money, wins, races, cars, parts, trophies.
 function migrateV1(o) {
@@ -703,12 +704,49 @@ function buildTrack(map) {
     if (kind === 2) lanes.forEach(bx => segs[i].items.push({ type: 'block', x: bx }));
     if (kind === 5) for (let j = 0; j < 4; j++) segs[i + j].pad = x;
   }
+  // SWIMMING POOL: a stretch of road that is water. Only used in real races (see startRace).
+  const pool = { a: 560, b: 600 };
+  for (let i = pool.a; i < pool.b; i++) { segs[i].pool = true; segs[i].items = []; segs[i].pad = null; }
   // mini-map: walk along the curves to draw the loop, then nudge the end to meet the start
   const pts = []; let a = 0, x = 0, y = 0;
   const csum = segs.reduce((t, s) => t + s.curve, 0) * 0.004;
   segs.forEach(s => { a += s.curve * 0.004 + (2 * Math.PI - csum) / segs.length; x += Math.sin(a); y -= Math.cos(a); pts.push([x, y]); });
   const ex = x, ey = y; pts.forEach((p, i) => { p[0] -= ex * i / pts.length; p[1] -= ey * i / pts.length; });
-  return { segs, len: segs.length * SEG, pts };
+  return { segs, len: segs.length * SEG, pts, pool };
+}
+
+/* ================= BOAT ART (swimming pool) =================
+   Drawn smooth once, like the cars, and cached. boatSprite = from behind (race), boatSide = garage. */
+function boatSprite(paint) {
+  const k = 'boat' + paint; if (SPR[k]) return SPR[k];
+  const U = 12, c = makeCanvas(40 * U, 30 * U), g = c.getContext('2d'); g.scale(U, U); g.lineJoin = 'round';
+  const dark = shade(paint, -115);
+  softShadow(g, 20, 27.5, 18, 2.2, 0.35);
+  g.beginPath(); g.moveTo(3, 15); g.lineTo(37, 15); g.quadraticCurveTo(36, 25, 28, 27); g.lineTo(12, 27); g.quadraticCurveTo(4, 25, 3, 15); g.closePath();   // hull
+  g.fillStyle = bodyGrad(g, paint, 15, 27); g.fill(); g.fillStyle = edgeDark(g, 3, 37, 0.45); g.fill(); g.strokeStyle = dark; g.lineWidth = 0.3; g.stroke();
+  g.fillStyle = '#ffffff'; g.fillRect(4.2, 18.4, 31.6, 1.4);                                   // white stripe
+  g.fillStyle = vgrad(g, 13.6, 15.4, [[0, '#ffffff'], [1, '#c8d4de']]); rrect(g, 2.4, 13.6, 35.2, 1.8, 0.8); g.fill();   // deck rim
+  g.beginPath(); g.moveTo(9, 13.8); g.lineTo(12, 6.5); g.lineTo(28, 6.5); g.lineTo(31, 13.8); g.closePath();             // windscreen
+  g.fillStyle = glassGrad(g, 6.5, 13.8); g.fill(); g.strokeStyle = '#d8e0e8'; g.lineWidth = 0.5; g.stroke();
+  g.save(); g.clip(); streaks(g, 6.5, 13.8, 14, 2.6); g.restore();
+  g.fillStyle = vgrad(g, 16, 25, [[0, '#4a4f58'], [0.5, '#22252b'], [1, '#111']]); rrect(g, 17, 16, 6, 9, 1.4); g.fill();   // outboard motor
+  g.fillStyle = '#ffd23f'; g.fillRect(17.6, 17.2, 4.8, 0.9);
+  [[6.5, '#ff3b3b'], [33.5, '#ff3b3b']].forEach(([x, col]) => glowLamp(g, () => { g.beginPath(); g.ellipse(x, 16.6, 1.3, 0.8, 0, 0, 7); }, col, '#ffd0d0'));
+  g.fillStyle = 'rgba(255,255,255,.85)'; [[6, 27.4, 3], [14, 28, 2.4], [26, 28, 2.4], [34, 27.4, 3]].forEach(([x, y, r]) => { g.beginPath(); g.ellipse(x, y, r, 0.9, 0, 0, 7); g.fill(); });   // foam
+  return (SPR[k] = mipChain(c));
+}
+function boatSide(paint) {
+  const k = 'boatside' + paint; if (SPR[k]) return SPR[k];
+  const U = 10, c = makeCanvas(48 * U, 24 * U), g = c.getContext('2d'); g.scale(U, U); g.lineJoin = 'round';
+  const dark = shade(paint, -115);
+  g.fillStyle = 'rgba(60,170,240,.55)'; rrect(g, 0, 19.5, 48, 4, 2); g.fill();                  // a little water
+  g.beginPath(); g.moveTo(4, 11); g.lineTo(46, 11); g.quadraticCurveTo(43, 19, 34, 21); g.lineTo(8, 21); g.quadraticCurveTo(5, 18, 4, 11); g.closePath();   // hull, bow on the right
+  g.fillStyle = bodyGrad(g, paint, 11, 21); g.fill(); g.strokeStyle = dark; g.lineWidth = 0.3; g.stroke();
+  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(5, 14); g.lineTo(44.5, 14); g.lineTo(43.6, 15.4); g.lineTo(5.4, 15.4); g.fill();
+  g.beginPath(); g.moveTo(22, 11); g.lineTo(26, 5); g.lineTo(31, 5); g.lineTo(33, 11); g.closePath(); g.fillStyle = glassGrad(g, 5, 11); g.fill(); g.strokeStyle = '#d8e0e8'; g.lineWidth = 0.4; g.stroke();
+  g.fillStyle = vgrad(g, 8, 20, [[0, '#4a4f58'], [1, '#111']]); rrect(g, 1, 8, 3.6, 11, 1); g.fill(); g.fillStyle = '#ffd23f'; g.fillRect(1.4, 9.4, 2.8, 0.8);   // motor
+  g.fillStyle = 'rgba(255,255,255,.9)'; [[44, 20.4, 3], [36, 21.2, 2], [6, 21, 2.4]].forEach(([x, y, r]) => { g.beginPath(); g.ellipse(x, y, r, 0.8, 0, 0, 7); g.fill(); });
+  return (SPR[k] = c);
 }
 
 /* =====================================================================
@@ -740,8 +778,9 @@ function startRace(opts) {
     laps: mode === 'qualify' ? 1 : DIFFICULTY.laps[mode === 'practice' ? 'practice' : map.id],
     phase: 'count', count: 3, t: 0, stats: playerStats(), coins: 0, pitPaid: 0, pops: [], item: null, broke: [], skyX: 0, frame: 0, bots: [],
     p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, rocketT: 0, lockT: 0, rocketUsed: false, bounceLeft: 0, hornUsed: false,
-      fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
+      inPool: false, towing: false, edgeT: 0, poolBumps: 0, fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
   };
+  R.splashT = 0; if (mode !== 'race') track.pool = null;   // the swimming pool is only in real races (practice + qualifying stay simple)
   const skills = mode === 'practice' ? [DIFFICULTY.practiceBot] : mode === 'qualify' ? [] : DIFFICULTY.mapSkill[map.id].map(s => s * lvl);
   const city = map.id === 'city';
   const looks = [['car', '#5cff7a', 'Zippy'], [city ? 'police' : 'truck', city ? '#2a3a8b' : '#ff8c00', city ? 'Officer Vroom' : 'Rusty'], ['shark', '#00c2ff', 'Bubbles']];
@@ -779,6 +818,8 @@ function update(dt) {
   if (rk && rk.ability === 'zoom') top *= rk.zoomPow;
   if (isBroken('tire')) top *= 0.85;
   if (p.shieldT > 0 && isBroken('tire')) fixTire('Shield fixed your tire! 🛡️');
+  R.splashT = Math.max(0, R.splashT - dt);
+  if (p.edgeT > 0) { p.edgeT -= dt; p.speed = 0; if (p.edgeT <= 0) { p.towing = true; addPop('🦆 Duck Floaty to the rescue!', '#ffd23f'); } updateBots(dt); ranking(); return; }   // waiting at the pool edge (no boat)
   if (p.pitT > 0) { p.pitT -= dt; p.speed = 0; updateBots(dt); ranking(); return; }   // sitting in the pit
   // what the driver wants: keyboard keys, touch buttons and the drag finger all add up here.
   // Drag mode: how far you push sets the speed; letting go = coast. Auto-GO only drives if it's switched on for that mode.
@@ -810,6 +851,7 @@ function update(dt) {
   }
   // move forward, checking every segment we pass (so nothing is skipped at high speed)
   const before = p.dist; p.dist += p.speed * dt;
+  if (!done) poolCheck();
   if (rk && rk.ability === 'magnet') for (let z = 0; z < rk.reachSegs; z++) findSeg(p.dist + z * SEG).items.forEach(it => {   // Coin Magnet: grab every coin nearby, any lane
     if (it.type === 'coin' && !it.taken) { it.taken = true; R.coins++; sound('coin'); } });
   for (let z = Math.floor(before / SEG) + 1; z <= Math.floor(p.dist / SEG); z++) touchSegment(findSeg(z * SEG));
@@ -824,6 +866,18 @@ function update(dt) {
   bumpCars(); updateBots(dt); ranking();
   R.skyX += seg.curve * speedPct * dt * 0.02;
   if (R.phase === 'done') { R.doneT -= dt; if (R.doneT <= 0) showResults(); }
+}
+/* SWIMMING POOL. With a Boat: you splash in, turn into a boat, zoom across, and turn back into a car.
+   No Boat: you bounce back gently from the edge, wait 2.5 s while a big message says to buy one,
+   then a friendly duck floaty tows you across slowly (30% speed). No damage, no money lost. */
+function poolCheck() {
+  const p = R.p, pl = R.track.pool; if (!pl) return;
+  const zi = Math.floor((((p.dist % R.track.len) + R.track.len) % R.track.len) / SEG), inP = zi >= pl.a && zi < pl.b;
+  if (inP && !p.inPool) {
+    if (S.boat || p.towing) { p.inPool = true; R.splashT = 0.8; addPop(S.boat ? '⛵ BOAT MODE! SPLASH!' : '🦆 Hold on tight!', '#5bd0ff'); sound('tap'); }
+    else { p.dist -= (zi - pl.a) * SEG + SEG * 1.5; p.speed = 0; p.air = 0; p.vy = 0; p.edgeT = 2.5; p.poolBumps++; addPop('Boing! You need a boat!', '#5bd0ff'); sound('oops'); }
+  } else if (!inP && p.inPool) { p.inPool = false; p.towing = false; R.splashT = 0.8; addPop(S.boat ? '🚗 Back to a car!' : 'Thanks, Duck! 🦆', '#ffd23f'); }
+  if (p.inPool && !S.boat) p.speed = Math.min(p.speed, R.stats.max * 0.3);
 }
 function touchSegment(seg) {
   const p = R.p;
@@ -1033,6 +1087,14 @@ function render() {
     poly(a.x - a.w - r1, a.y, a.x - a.w, a.y, b.x - b.w, b.y, b.x - b.w - r2, b.y, curb);
     poly(a.x + a.w + r1, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x + b.w + r2, b.y, curb);
     const start = s.i < 3;
+    if (s.pool && R.track.pool) {   // swimming pool: white tiles at the sides, moving blue ripples, lane ropes
+      const edge = s.i === R.track.pool.a || s.i === R.track.pool.b - 1, tile = stripe ? '#ffffff' : '#bfe6ff';
+      poly(a.x - a.w - r1, a.y, a.x - a.w, a.y, b.x - b.w, b.y, b.x - b.w - r2, b.y, tile); poly(a.x + a.w + r1, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x + b.w + r2, b.y, tile);
+      const rip = ((Math.floor(s.i - R.t * 6) % 4) + 4) % 4;
+      poly(a.x - a.w, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x - b.w, b.y, edge ? '#ffffff' : night ? ['#0c3d7a', '#10498c', '#0c3d7a', '#15559e'][rip] : ['#1f8fe0', '#2aa0ee', '#1f8fe0', '#4cc0fa'][rip]);
+      if (!edge) [-0.5, 0.5].forEach(o => { const l1 = a.w / 30, l2 = b.w / 30, ax = a.x + o * a.w, bx = b.x + o * b.w; poly(ax - l1, a.y, ax + l1, a.y, bx + l2, b.y, bx - l2, b.y, Math.floor(s.i / 2) % 2 ? '#ff3b3b' : '#ffffff'); });
+      maxY = s.p2.y; continue;
+    }
     poly(a.x - a.w, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x - b.w, b.y, start ? (s.i % 2 ? '#fff' : '#222') : night ? (stripe ? '#22223c' : '#1e1e36') : (stripe ? col.r1 : col.r2));
     if (Math.floor(s.i / 4) % 2 && !start) { const l1 = a.w / 40, l2 = b.w / 40; poly(a.x - l1, a.y, a.x + l1, a.y, b.x + l2, b.y, b.x - l2, b.y, night ? '#ffff80' : '#f4f4f4'); }   // dashed centre line
     if (s.pad != null) { const w1 = a.w * 0.28, w2 = b.w * 0.28, ax = a.x + s.pad * a.w, bx = b.x + s.pad * b.w; poly(ax - w1, a.y, ax + w1, a.y, bx + w2, b.y, bx - w2, b.y, s.i % 2 ? '#5bd0ff' : '#ffd23f'); }
@@ -1049,7 +1111,7 @@ function render() {
     R.bots.forEach(bt => {
       const bz = ((bt.dist % len) + len) % len; if (Math.floor(bz / SEG) !== s.i || bt.dist < camZ + SEG) return;
       const pct = (bz % SEG) / SEG, bsc = lerp(s.p1.scale, s.p2.scale, pct), bx = lerp(s.p1.x, s.p2.x, pct) + bsc * bt.x * ROAD_W * W / 2, by = lerp(s.p1.y, s.p2.y, pct), cw = CAR_W * bsc * W / 2;
-      drawSprite(carSprite(bt.shape, bt.paint, bt.tire), CAR_W, bsc, bx, by, s.clip);
+      drawSprite(s.pool && R.track.pool ? boatSprite(bt.paint) : carSprite(bt.shape, bt.paint, bt.tire), CAR_W, bsc, bx, by, s.clip);   // bots have boats too
       if (bt.shape === 'police') { g.fillStyle = (R.frame >> 4) % 2 ? '#ff2f4faa' : '#2f6bffaa'; g.beginPath(); g.arc(bx, by - cw * 0.62, cw * 0.12, 0, 7); g.fill(); }   // flashing light
       if (bt.gooT > 0) { g.fillStyle = '#4dff6acc'; g.beginPath(); g.ellipse(bx, by - cw * 0.3, cw * 0.55, cw * 0.3, 0, 0, 7); g.fill(); }
       if (bt.freezeT > 0) { g.fillStyle = '#bff4ffaa'; g.fillRect(bx - cw * 0.55, by - cw * 0.8, cw * 1.1, cw * 0.8); }
@@ -1071,7 +1133,12 @@ function drawPlayer(horizon) {
   }
   const rk = rocketOn();
   const see = b.ghost || p.ghostT > 0 ? 0.6 : rk && rk.ability === 'sky' ? 0.5 + 0.15 * Math.sin(R.t * 12) : 0;   // ghost car + Sky Sparkle are see-through
-  drawSprite(carSprite(b.shape, carPaint(b, true), tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
+  if (p.towing) { g.fillStyle = '#ffd23f'; g.beginPath(); g.ellipse(cx, carY - cw * 0.08, cw * 0.62, cw * 0.16, 0, 0, 7); g.fill(); g.font = Math.round(cw * 0.3) + 'px system-ui'; g.textAlign = 'center'; g.fillText('🦆', cx + cw * 0.55, carY - cw * 0.12); }   // duck floaty ring
+  if (p.inPool && S.boat) {   // BOAT MODE: your car became a boat, with spray behind
+    drawSprite(boatSprite(carPaint(b, true)), CAR_W, scale, cx, carY + cw * 0.04, 0, see);
+    g.fillStyle = 'rgba(255,255,255,.8)'; for (let i = 0; i < 10; i++) { const ph = (R.t * 2.5 + i / 10) % 1; g.beginPath(); g.arc(cx + (i % 2 ? 1 : -1) * cw * (0.1 + ph * 0.45), carY - ph * cw * 0.2, cw * 0.04 * (1 - ph) + K, 0, 7); g.fill(); }
+  } else drawSprite(carSprite(b.shape, carPaint(b, true), tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
+  if (R.splashT > 0) { const ph = 1 - R.splashT / 0.8; g.fillStyle = 'rgba(200,240,255,' + (1 - ph) + ')'; for (let i = 0; i < 18; i++) { const a = Math.PI + (i / 17) * Math.PI; g.beginPath(); g.arc(cx + Math.cos(a) * cw * (0.3 + ph * 0.7), carY - cw * 0.1 + Math.sin(a) * cw * (0.2 + ph * 0.6), cw * 0.05, 0, 7); g.fill(); } }   // big splash
   if (rk && rk.ability === 'sky') for (let i = 0; i < 14; i++) {   // sparkles
     const a = i * 2.4 + R.t * 3, rr = cw * (0.45 + 0.2 * Math.sin(R.t * 5 + i));
     g.fillStyle = ['#ffffff', '#ffd23f', '#ff66c4', '#7fe6ff'][i % 4]; g.fillRect(cx + Math.cos(a) * rr, carY - cw * 0.35 + Math.sin(a) * rr * 0.6, 4 * K, 4 * K);
@@ -1117,6 +1184,16 @@ function drawHUD() {
   if (R.night && R.blood && !S.moonBonus) txt('Tap the blood moon! ' + S.moonTaps + '/100', W * 0.8, H * 0.12 + H * 0.09, 15, '#ff9a9a', 'center');
   txt(Math.round(p.speed / BASE_MAX * 160) + ' km/h', W / 2, 36 * k, 24, '#fff', 'center');
   if (R.phase === 'count') txt(String(Math.ceil(R.count)), W / 2, H * 0.35, 110, '#ffd23f', 'center');
+  const pl = R.track.pool;
+  if (pl && !p.finished) {   // pool messages
+    const zi = Math.floor((((p.dist % R.track.len) + R.track.len) % R.track.len) / SEG), ahead = pl.a - zi;
+    if (p.edgeT > 0 || (!S.boat && !p.towing && ahead > 0 && ahead < 60)) {
+      const bw = Math.min(W * 0.8, 720 * k), bh = 120 * k, bx = (W - bw) / 2, by = H * 0.33;
+      g.fillStyle = 'rgba(20,90,170,.92)'; rrect(g, bx, by, bw, bh, 24 * k); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 4 * k; g.stroke();
+      txt('🚤 You need a boat!', W / 2, by + 50 * k, 40, '#fff', 'center');
+      txt(p.edgeT > 0 ? '🦆 A duck floaty is coming to help...' : 'Buy one in the Garage', W / 2, by + 95 * k, 26, '#ffd23f', 'center');
+    } else if (S.boat && ahead > 0 && ahead < 40) txt('🏊 Pool ahead - your boat is ready! ⛵', W / 2, H * 0.2, 28, '#7fe6ff', 'center');
+  }
   R.pops.forEach((q, i) => txt(q.text, W / 2, H * 0.26 + i * 42 * k - (1.6 - q.t) * 30 * k, 32, q.color, 'center'));
   drawMinimap();
 }
@@ -1271,7 +1348,7 @@ const SCREENS = {
       '<p class="muted">Wins: ' + S.wins + ' · Races: ' + S.races + ' · Win streak: ' + S.streak + '</p></div></div>';
   },
   garage() {
-    const tabs = { cars: '🚗 Cars', tire: '🛞 Tires', boost: '🔥 Boost', wing: '🪽 Wings', horn: '📯 Horns', paint: '🎨 Paint', mine: '🎒 My parts' };
+    const tabs = { cars: '🚗 Cars', tire: '🛞 Tires', boost: '🔥 Boost', wing: '🪽 Wings', horn: '📯 Horns', paint: '🎨 Paint', boat: '⛵ Boat', mine: '🎒 My parts' };
     return '<h1>🔧 Garage</h1><div class="row"><div class="card" style="text-align:center;max-width:300px">' + preview(240, 180) + '<div class="big">' + myBase().name + '</div>' + statBars() + '</div>' +
       '<div style="flex:3 1 500px"><div class="tabs">' + Object.entries(tabs).map(([k, v]) => '<button class="tab ' + (garageTab === k ? 'on' : '') + '" data-act="tab" data-arg="' + k + '">' + v + '</button>').join('') + '</div><div class="row">' + garageList() + '</div></div></div>' +
       center(btn('⬅ Back', 'go', 'home', 'blue'));
@@ -1317,6 +1394,9 @@ function garageList() {
     else act = open ? priceBtn(c.price, 'buyCar', c.id) : '<div class="muted">' + lockText(c.un) + '</div>';
     return '<div class="card ' + (eq ? 'on' : '') + (open || own ? '' : ' lock') + '" style="text-align:center">' + preview(200, 100, c.id) + '<div class="big" style="font-size:21px">' + c.name + (c.ghost ? ' 👻' : '') + (c.rocket ? ' 🚀' : '') + '</div>' + (c.rocket ? '<div style="color:#ffd23f;font-weight:700">🚀 ' + c.rocket.desc + '</div>' : c.id === 'rocket' ? '<div style="color:#ffd23f;font-weight:700">👑 Boss of the Rocket Family!</div>' : '') + '<div class="muted">Speed ' + c.speed + ' · Handling ' + c.handle + ' · Grip ' + c.grip + '</div>' + act + '</div>';
   }).join('');
+  if (T === 'boat') return '<div class="card ' + (S.boat ? 'on' : '') + '" style="max-width:520px;text-align:center"><canvas class="prev" data-shape="boat" width="300" height="150" style="width:300px;height:150px"></canvas>' +
+    '<div class="big">⛵ Splash Boat</div><p>Races have a 🏊 swimming pool! With a boat, your car turns into a boat and zooms across the water.</p>' +
+    (S.boat ? '<b>✅ You own a boat! It comes with you in every race.</b>' : priceBtn(ECONOMY.boatPrice, 'buyBoat', '')) + '</div>';
   if (T === 'paint') return '<div class="card" style="max-width:600px;text-align:center"><p>Paint costs $' + ECONOMY.paintPrice + (S.freePaints ? ' · You have ' + S.freePaints + ' free paint 🎨' : '') + (myBase().ghost ? '<br>(The Ghost Car always looks ghostly!)' : '') + '</p>' +
     PAINTS.map(c => '<button data-act="paint" data-arg="' + c + '" style="width:64px;height:64px;border-radius:50%;margin:6px;border:' + (S.paint === c ? '5px solid #ffd23f' : '3px solid #fff5') + ';background:' + c + '"></button>').join('') + '</div>';
   if (T === 'mine') {
@@ -1340,6 +1420,8 @@ function fixCost(p) { return catOf(p).kind === 'tire' ? (p.tier === 'ruby' ? ECO
 function upgradeCost(p) { return Math.round(ECONOMY.partPrice[TIERS[tierIdx(p.tier) + 1]] - ECONOMY.partPrice[p.tier] * ECONOMY.upgradeDiscount); }
 function drawPreviews() {
   document.querySelectorAll('canvas.prev').forEach(c => {
+    if (c.dataset.shape === 'boat') { const x = c.getContext('2d'), sd = boatSide(carPaint(myBase(), true)); if (!c.dataset.hi) { c.dataset.hi = 1; c.width *= 2; c.height *= 2; }
+      x.imageSmoothingEnabled = true; x.clearRect(0, 0, c.width, c.height); const w = c.width * 0.96, h = w * sd.height / sd.width; x.drawImage(sd, c.width * 0.02, (c.height - h) / 2, w, h); return; }
     const x = c.getContext('2d'), mine = !c.dataset.shape, b = mine ? myBase() : CARS.find(q => q.id === c.dataset.shape), tire = partById(S.equip.tire);
     // garage shows every car from the side, drawn smooth (pre-rendered once by carSide)
     if (!c.dataset.hi) { c.dataset.hi = 1; c.width *= 2; c.height *= 2; c.style.imageRendering = 'auto'; }
@@ -1379,6 +1461,7 @@ const ACT = {
   upgrade: id => { const p = partById(id); if (!p || tierIdx(p.tier) >= 4 || !spend(upgradeCost(p))) return; p.tier = TIERS[tierIdx(p.tier) + 1]; save(); popup('✨ Upgraded to ' + p.tier + '!'); show('garage'); },
   fix: id => { const p = partById(id); if (!p || !p.broken || !spend(fixCost(p))) return; p.broken = false; save(); show('garage'); },
   patch: id => { const p = partById(id); if (!p || !p.broken || S.patches < 1) return; S.patches--; p.broken = false; save(); popup('🩹 Patched!'); show('garage'); },
+  buyBoat: () => { if (S.boat || !spend(ECONOMY.boatPrice)) return; S.boat = true; save(); popup('🎉 You bought a boat! Find the pool in a race! ⛵'); show('garage'); },
   buyPatch: () => { if (spend(ECONOMY.patchPrice)) { S.patches++; save(); show('garage'); } },
   paint: c => { if (S.paint === c) return; if (S.freePaints > 0) S.freePaints--; else if (!spend(ECONOMY.paintPrice)) return; S.paint = c; save(); show('garage'); },
   practice: () => startRace({ mode: 'practice', map: 'grass' }),
@@ -1468,6 +1551,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide };   // for testing only
 </script>
 </body></html>

@@ -169,3 +169,22 @@ Before that, all 22 Round 2 checks passed, with **zero console errors**. See `te
 - Rain or snow is rolled when you open the map vote, not per map.
 - The race shown on the mini-map is an approximate loop shape, not an exact map.
 - Sounds are simple beeps made in code, with no sound files.
+
+## Swimming Pool + Boat (24 Oct 2026, built locally, NOT pushed - waiting for Jeff's OK)
+- Every real race (not practice or qualifying) has a **🏊 swimming pool**: road segments 560-599 of each lap become blue water with moving ripples, white tile edges and red/white lane ropes. Coins, cones and zoom pads are kept out of it.
+- **⛵ Boat tab in the Garage**: the Splash Boat costs **$1,500** (`ECONOMY.boatPrice`, same as the next car step, about 5 races). Bought through the one `spend()` check; the button says "Need $X more" and a forced buy is refused. Saved as `S.boat` (old saves get `false` by default).
+- **With a boat**: "Pool ahead - your boat is ready!", then a splash, your car turns into a boat (smooth 3D-style art, your paint colour, spray behind) and you drive across at normal speed, then splash back into a car. Bots get boats too.
+- **No boat** (the simplest fun rule I picked): a big blue banner "🚤 You need a boat! Buy one in the Garage" shows before the pool. At the edge the car goes "Boing!", bounces back a little and stops for 2.5 s, then a friendly **🦆 duck floaty** tows you across at 30% speed. No damage and no money lost; you just lose some time, and the race can always finish.
+- Works the same with drag, buttons and keyboard (it's all in `update()`). Code: `poolCheck()` (`src/p4.js`), pool drawing + boat drawing + banner (`src/p5.js`), `boatSprite()`/`boatSide()` (end of `src/p3.js`), the pool stretch in `buildTrack()`, Boat tab + `buyBoat` (`src/p6.js`).
+- Tests: 10 new checks in `tests/play.js` (87/87 pass). Screenshots: `shots/pool-01-approach.png`, `pool-02-boat-on-water.png`, `pool-03-garage-boat-item.png`, `pool-03b-garage-boat-owned.png`, `pool-04-no-boat-message.png`.
+
+**Next steps (ideas)**
+- More boat types (speedboat, duck boat, pirate-style raft, jet ski), each with a small stat difference.
+- Boat upgrades by tier (gold → diamond → amethyst → ruby propeller), and paint for the boat.
+- Pools in different places on each map (oasis in Desert, fountain canal in City, space goo pool in Space), maybe two pools on long tracks.
+- Water fun: bouncing beach balls as obstacles, a water-slide ramp, splash-jump with FLY.
+- Ask Archer: what should the boat be called, and what happens in the pool if you have no boat?
+
+## Paint shop status (checked 24 Oct 2026)
+Partly done. It works: the Garage 🎨 Paint tab has 12 colour circles at $50 each (`ECONOMY.paintPrice`), uses free paints from the wheel first, saves `S.paint`, and your car shows the colour in the garage and in races. Screenshot: `shots/paint-shop-now.png`.
+Still to do: a preview before you pay (right now each tap costs $50 straight away); paint does nothing on the Ghost Car, Mini Bug or rocket family, and only the Ghost Car says so; no stripes or patterns; no boat paint.
