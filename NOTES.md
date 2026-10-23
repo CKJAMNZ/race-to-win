@@ -63,6 +63,12 @@ Six new rocket cars in the garage Cars tab, **$5,000 each**, bought through the 
 - All the numbers live in the commented `ROCKETS` list (and `ROCKET_PRICE`) in `src/p2.js`. Powers are in `doRocket()`/`update()`/`updateBots()` (`src/p4.js`) and drawn in `drawPlayer()` (`src/p5.js`).
 - Nothing violent: powers only slow, float, bounce or collect.
 
+## Red Racer (23 Oct 2026)
+- New garage car **Red Racer**, **$1,500** (same step as the Lightning Bolt, no unlock needed). Speed 1.07, handling 1.1, grip 1.05. Bought through the one `spend()` check, so it can't be bought with less than $1,500 ("Need $X more").
+- It is the only car drawn smooth instead of pixel blocks: canvas curves, a low wedge body, gradient red paint with shine, tinted windows with a highlight streak, a soft shadow. From behind (race): slim tail lights with a light bar, diffuser, twin chrome exhausts, fat tyres. In the garage: a side view with a headlight, door seams, a mirror, and wheels with rims, spokes, sidewalls and red calipers.
+- It is drawn once onto offscreen canvases with smaller pre-shrunk copies (`redRacerRear()`/`redRacerSide()` in `src/p3.js`), so it stays smooth on iPad. It keeps its red; paint doesn't change it. The other cars are unchanged.
+- Tests: Cars tab shows it, refused at $1,499, bought at $1,500, a race with it finishes, zero console errors. Screenshots: `shots/redcar-garage.png`, `shots/redcar-race.png`.
+
 ## Open idea from Archer (not built)
 - A **quest man** who gives gem pieces by colour: red = ruby, green = emerald, gold = gold, blue = diamond. **Emerald isn't a tier yet**; it's for Round 3.
 

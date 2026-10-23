@@ -118,6 +118,7 @@ const CARS = [ // speed = top speed multiplier; handle/grip around 1
   { id: 'ghost',  name: 'Ghost Car',      price: 600,  speed: 1.00, handle: 1.0,  grip: 1.0,  shape: 'ghost', ghost: true },
   { id: 'truck',  name: 'Monster Truck',  price: 700,  speed: 0.98, handle: 0.9,  grip: 1.3,  shape: 'truck' },
   { id: 'bolt',   name: 'Lightning Bolt', price: 1500, speed: 1.08, handle: 1.05, grip: 1.0,  shape: 'car',    un: { races: 3 } },
+  { id: 'redracer', name: 'Red Racer',  price: 1500, speed: 1.07, handle: 1.1,  grip: 1.05, shape: 'redracer', body: '#d40f1e', real: true },   // smooth-drawn sports car (keeps its red)
   { id: 'shark',  name: 'Shark Car',      price: 2200, speed: 1.13, handle: 1.1,  grip: 1.05, shape: 'shark',  un: { wins: 2 } },
   { id: 'police', name: 'Police Cruiser', price: 3000, speed: 1.17, handle: 1.2,  grip: 1.15, shape: 'police', un: { races: 10 } },
   { id: 'hover',  name: 'Hover Car',      price: 4500, speed: 1.22, handle: 1.2,  grip: 1.2,  shape: 'hover',  un: { wins: 5 }, fly: 1 },
@@ -273,6 +274,7 @@ const SPR = {};   // sprite cache
 // Rear view of a car. shape = body style, paint = body colour, tire = tire tier colour.
 function carSprite(shape, paint, tire) {
   const k = 'car' + shape + paint + tire; if (SPR[k]) return SPR[k];
+  if (shape === 'redracer') return (SPR[k] = redRacerRear(tire));
   const c = makeCanvas(40, 30), g = c.getContext('2d');
   const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
   const big = shape === 'truck', hover = shape === 'hover';
@@ -301,6 +303,106 @@ function carSprite(shape, paint, tire) {
   if (shape === 'dragon') [11, 16, 21, 26].forEach(x => px(x, cy - 2, 3, 2, '#5cff7a'));
   if (shape === 'ghost') { px(14, cy + 3, 3, 3, '#223'); px(23, cy + 3, 3, 3, '#223'); px(15, cy + 3, 1, 1, '#fff'); px(24, cy + 3, 1, 1, '#fff'); } // friendly ghost eyes
   return (SPR[k] = c);
+}
+/* ---- Red Racer: a smooth, "real" sports car drawn with curves, not blocks.
+   Drawn once at high resolution, then shrunk into a mip chain (c.mips) so it
+   looks clean both big (garage, your car) and tiny (far down the road). ---- */
+function mipChain(c) {
+  const m = [c]; let cur = c;
+  while (cur.width > 24) { const n = makeCanvas(cur.width >> 1, cur.height >> 1), q = n.getContext('2d'); q.imageSmoothingEnabled = true; q.imageSmoothingQuality = 'high'; q.drawImage(cur, 0, 0, n.width, n.height); m.push(n); cur = n; }
+  c.mips = m; return c;
+}
+function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function paintGrad(g, y0, y1) { const p = g.createLinearGradient(0, y0, 0, y1); p.addColorStop(0, '#ff6a6a'); p.addColorStop(0.18, '#f0202c'); p.addColorStop(0.55, '#c00c18'); p.addColorStop(1, '#5a0006'); return p; }
+function redRacerRear(tire) {   // seen from behind (race view). 40x30 design units like the other sprites.
+  const S = 16, c = makeCanvas(40 * S, 30 * S), g = c.getContext('2d'); g.scale(S, S); g.lineJoin = 'round';
+  let gr = g.createRadialGradient(0, 0, 1, 0, 0, 19); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.save(); g.fillStyle = gr;   // soft shadow g.translate(0, 27.6); g.scale(1, 0.13); g.translate(20, 0); g.beginPath(); g.arc(0, 0, 19, 0, 7); g.fill(); g.restore();
+  [3.2, 30.8].forEach(x => {                                            // fat rear tyres with sidewall shading
+    const t = g.createLinearGradient(x, 0, x + 6, 0); t.addColorStop(0, '#050505'); t.addColorStop(0.35, '#2c2c2e'); t.addColorStop(0.7, '#1a1a1c'); t.addColorStop(1, '#050505');
+    g.fillStyle = t; rrect(g, x, 19.2, 6, 8.2, 1.6); g.fill();
+    g.fillStyle = tire; g.globalAlpha = 0.55; rrect(g, x + 0.6, 26.4, 4.8, 0.6, 0.3); g.fill(); g.globalAlpha = 1;   // tread tint = tyre tier
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 0.25; g.beginPath(); g.moveTo(x + 1.4, 20); g.lineTo(x + 1.4, 26.6); g.stroke();
+  });
+  // body: wide hips, low deck, tapering cabin
+  g.beginPath(); g.moveTo(4.2, 25.2); g.bezierCurveTo(3.2, 23.5, 3, 20.5, 3.6, 18.6); g.bezierCurveTo(4.2, 16.6, 5.6, 15.4, 8.6, 15);
+  g.lineTo(10.4, 14.9); g.bezierCurveTo(11.6, 11.8, 12.6, 10.0, 15, 9.6); g.lineTo(25, 9.6); g.bezierCurveTo(27.4, 10.0, 28.4, 11.8, 29.6, 14.9);
+  g.lineTo(31.4, 15); g.bezierCurveTo(34.4, 15.4, 35.8, 16.6, 36.4, 18.6); g.bezierCurveTo(37, 20.5, 36.8, 23.5, 35.8, 25.2); g.closePath();
+  g.fillStyle = paintGrad(g, 9.6, 25.2); g.fill(); g.strokeStyle = '#3a0004'; g.lineWidth = 0.25; g.stroke();
+  // shine across the hips
+  gr = g.createLinearGradient(0, 15, 0, 18.5); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.moveTo(4.4, 18.2); g.bezierCurveTo(5, 16.2, 7, 15.4, 10, 15.4); g.lineTo(30, 15.4); g.bezierCurveTo(33, 15.4, 35, 16.2, 35.6, 18.2); g.closePath(); g.fill();
+  // rear window: dark tint with a highlight streak
+  g.beginPath(); g.moveTo(12, 14.6); g.bezierCurveTo(12.8, 12.2, 13.6, 10.8, 15.4, 10.5); g.lineTo(24.6, 10.5); g.bezierCurveTo(26.4, 10.8, 27.2, 12.2, 28, 14.6); g.closePath();
+  gr = g.createLinearGradient(0, 10.5, 0, 14.6); gr.addColorStop(0, '#3a4a5c'); gr.addColorStop(1, '#0b1118'); g.fillStyle = gr; g.fill();
+  g.save(); g.clip(); g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.moveTo(15, 14.8); g.lineTo(18, 10); g.lineTo(19.6, 10); g.lineTo(16.6, 14.8); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.2)'; g.beginPath(); g.moveTo(18, 14.8); g.lineTo(21, 10); g.lineTo(21.7, 10); g.lineTo(18.7, 14.8); g.fill(); g.restore();
+  g.fillStyle = '#7a0008'; rrect(g, 9, 14.7, 22, 0.7, 0.35); g.fill();          // ducktail spoiler lip
+  g.fillStyle = 'rgba(255,255,255,.35)'; rrect(g, 9.5, 14.7, 21, 0.2, 0.1); g.fill();
+  // slim tail lights joined by a light bar, with glow
+  g.save(); g.shadowColor = '#ff2a2a'; g.shadowBlur = 1.2;
+  [1, -1].forEach(sd => { g.save(); if (sd < 0) { g.translate(40, 0); g.scale(-1, 1); }
+    g.shadowBlur = 0; g.fillStyle = '#140204'; g.beginPath(); g.moveTo(4, 17.3); g.bezierCurveTo(5.4, 16, 9, 15.9, 14, 16.2); g.lineTo(13.8, 18.4); g.bezierCurveTo(9, 18.5, 6, 18.7, 4.2, 19.2); g.closePath(); g.fill();   // black housing
+    g.shadowBlur = 1.4; g.beginPath(); g.moveTo(4.6, 17.5); g.bezierCurveTo(5.8, 16.6, 9, 16.5, 13.4, 16.7); g.lineTo(13.3, 17.8); g.bezierCurveTo(9, 17.9, 6.2, 18.1, 4.8, 18.5); g.closePath();
+    gr = g.createLinearGradient(0, 16.5, 0, 18.5); gr.addColorStop(0, '#ff6a50'); gr.addColorStop(0.4, '#ff1a10'); gr.addColorStop(1, '#a00000'); g.fillStyle = gr; g.fill();
+    g.fillStyle = '#ffd0c0'; g.beginPath(); g.moveTo(5.6, 17.4); g.bezierCurveTo(7, 16.9, 10, 16.85, 13, 16.95); g.lineTo(13, 17.2); g.bezierCurveTo(10, 17.15, 7, 17.3, 5.7, 17.65); g.fill(); g.restore(); });
+  g.shadowBlur = 0; g.fillStyle = '#140204'; g.fillRect(13.6, 16.7, 12.8, 1.1); g.shadowBlur = 1; g.fillStyle = '#ff2a1a'; g.fillRect(13.6, 17.05, 12.8, 0.35); g.restore();
+  g.fillStyle = '#e8e8e8'; rrect(g, 16.4, 18.6, 7.2, 2.4, 0.4); g.fill();    // number plate
+  g.fillStyle = '#222'; g.font = 'bold 1.7px sans-serif'; g.textAlign = 'center'; g.fillText('RACER', 20, 20.4);
+  // diffuser with fins
+  g.beginPath(); g.moveTo(7.6, 22.4); g.lineTo(32.4, 22.4); g.bezierCurveTo(33.6, 23.6, 33.8, 24.6, 33.6, 25.6); g.lineTo(6.4, 25.6); g.bezierCurveTo(6.2, 24.6, 6.4, 23.6, 7.6, 22.4); g.closePath();
+  gr = g.createLinearGradient(0, 22.4, 0, 25.6); gr.addColorStop(0, '#2a2a2e'); gr.addColorStop(1, '#070708'); g.fillStyle = gr; g.fill();
+  g.strokeStyle = '#3c3c42'; g.lineWidth = 0.3; [15.5, 18, 22, 24.5].forEach(x => { g.beginPath(); g.moveTo(x, 22.8); g.lineTo(x, 25.4); g.stroke(); });
+  [11.4, 28.6].forEach(x => {                                            // twin chrome exhausts
+    gr = g.createRadialGradient(x - 0.4, 23.6, 0.2, x, 24, 1.4); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.6, '#9a9aa2'); gr.addColorStop(1, '#4a4a50');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, 24, 1.3, 0, 7); g.fill(); g.fillStyle = '#0a0a0a'; g.beginPath(); g.arc(x, 24.05, 0.85, 0, 7); g.fill(); });
+  return mipChain(c);
+}
+function redRacerSide() {   // 3/4-ish side view for the garage: headlights, door lines, rims
+  if (SPR.rrSide) return SPR.rrSide;
+  const S = 10, c = makeCanvas(48 * S, 24 * S), g = c.getContext('2d'); g.scale(S, S); g.lineJoin = 'round';
+  g.save(); g.translate(24, 21.6); g.scale(1, 0.08); let gr = g.createRadialGradient(0, 0, 2, 0, 0, 23); gr.addColorStop(0, 'rgba(0,0,0,.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 23, 0, 7); g.fill(); g.restore();
+  // low wedge body (front is on the right)
+  g.beginPath(); g.moveTo(3.2, 18); g.bezierCurveTo(2.4, 16.5, 2.4, 13.8, 3, 12.4); g.bezierCurveTo(5, 11.2, 8, 10.8, 12, 10.4);
+  g.bezierCurveTo(15.5, 7.6, 18.5, 6, 23, 5.8); g.bezierCurveTo(27.5, 5.7, 30.5, 7.6, 34, 10); g.bezierCurveTo(39, 10.8, 43.5, 11.8, 45.6, 13.4);
+  g.bezierCurveTo(46.4, 14.4, 46.4, 16.6, 45.4, 18); g.lineTo(41.6, 18); g.arc(37, 18, 4.6, 0, Math.PI, true); g.lineTo(15.6, 18); g.arc(11, 18, 4.6, 0, Math.PI, true); g.closePath();
+  g.fillStyle = paintGrad(g, 5.8, 18); g.fill(); g.strokeStyle = '#3a0004'; g.lineWidth = 0.2; g.stroke();
+  g.save(); g.clip();
+  gr = g.createLinearGradient(0, 10, 0, 13); gr.addColorStop(0, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');   // shoulder shine
+  g.fillStyle = gr; g.beginPath(); g.moveTo(3, 12.4); g.bezierCurveTo(10, 10.6, 30, 10.4, 45.6, 13.4); g.lineTo(45.6, 14.2); g.bezierCurveTo(30, 12.6, 10, 12.6, 3, 13.6); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 16.6, 48, 2);                                    // dark side skirt
+  g.strokeStyle = 'rgba(40,0,4,.8)'; g.lineWidth = 0.18;                                          // door seams + handle
+  g.beginPath(); g.moveTo(20.4, 10.6); g.bezierCurveTo(19.8, 13, 19.8, 15, 20.6, 17); g.moveTo(31.6, 10.4); g.bezierCurveTo(32.4, 12.6, 32.6, 14.8, 32.2, 17); g.moveTo(20.6, 17); g.lineTo(32.2, 17); g.stroke();
+  g.fillStyle = '#4a0006'; rrect(g, 28.4, 12.2, 2.2, 0.45, 0.2); g.fill();
+  g.fillStyle = '#16080a'; g.beginPath(); g.moveTo(15, 13); g.bezierCurveTo(16.6, 12.4, 18.6, 12.4, 19.4, 13); g.bezierCurveTo(18.6, 14.2, 16.6, 14.6, 15.4, 14.4); g.fill();   // side intake
+  g.restore();
+  // windows: tinted, with B-pillar and highlight streak
+  g.beginPath(); g.moveTo(13.6, 10.4); g.bezierCurveTo(16.4, 8, 19, 6.8, 23, 6.6); g.bezierCurveTo(27, 6.6, 29.6, 8, 32.6, 10.2); g.closePath();
+  gr = g.createLinearGradient(0, 6.6, 0, 10.4); gr.addColorStop(0, '#45586c'); gr.addColorStop(1, '#0a1016'); g.fillStyle = gr; g.fill();
+  g.save(); g.clip(); g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.moveTo(22, 10.6); g.lineTo(25.4, 6); g.lineTo(27, 6); g.lineTo(23.6, 10.6); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.2)'; g.beginPath(); g.moveTo(24.4, 10.6); g.lineTo(27.8, 6); g.lineTo(28.4, 6); g.lineTo(25, 10.6); g.fill();
+  g.fillStyle = '#1a0003'; g.beginPath(); g.moveTo(19.8, 10.6); g.lineTo(20.6, 6.6); g.lineTo(21.4, 6.6); g.lineTo(20.8, 10.6); g.fill(); g.restore();
+  g.fillStyle = '#b00a16'; g.beginPath(); g.ellipse(33.2, 10.4, 1.1, 0.6, -0.2, 0, 7); g.fill();          // mirror
+  // headlight + tail light
+  g.save(); g.shadowColor = '#fff6c0'; g.shadowBlur = 1.2;
+  g.beginPath(); g.moveTo(41.4, 12); g.bezierCurveTo(43, 12.2, 44.6, 12.8, 45.4, 13.6); g.lineTo(44.6, 14.2); g.bezierCurveTo(43.4, 13.6, 42.2, 13, 41.2, 12.7); g.closePath();
+  gr = g.createLinearGradient(41, 12, 45.4, 14); gr.addColorStop(0, '#9fb8c8'); gr.addColorStop(0.5, '#ffffff'); gr.addColorStop(1, '#fff3b0'); g.fillStyle = gr; g.fill(); g.restore();
+  g.save(); g.shadowColor = '#ff2020'; g.shadowBlur = 1; g.fillStyle = '#ff2a2a'; g.beginPath(); g.moveTo(2.7, 12.6); g.bezierCurveTo(3.6, 12, 5, 11.8, 6, 11.8); g.lineTo(5.8, 12.6); g.bezierCurveTo(4.6, 12.7, 3.6, 13, 2.7, 13.5); g.fill(); g.restore();
+  g.fillStyle = '#111'; g.beginPath(); g.moveTo(42, 16.6); g.lineTo(45.6, 16.4); g.lineTo(45.3, 17.6); g.lineTo(41.8, 17.6); g.fill();   // front splitter
+  [11, 37].forEach(x => {                                                // wheels: tyre, sidewall, rim, spokes, caliper
+    g.fillStyle = '#0a0a0a'; g.beginPath(); g.arc(x, 18, 3.9, 0, 7); g.fill();
+    gr = g.createRadialGradient(x, 18, 2.6, x, 18, 3.9); gr.addColorStop(0, '#3a3a3c'); gr.addColorStop(0.5, '#1c1c1e'); gr.addColorStop(1, '#050505');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, 18, 3.8, 0, 7); g.fill();
+    gr = g.createRadialGradient(x - 0.8, 17.2, 0.3, x, 18, 2.7); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#b8bcc4'); gr.addColorStop(1, '#5a5e66');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, 18, 2.7, 0, 7); g.fill();
+    g.fillStyle = '#1a1a1e'; g.beginPath(); g.arc(x, 18, 2.3, 0, 7); g.fill();
+    g.fillStyle = '#e01020'; g.beginPath(); g.arc(x, 18, 1.9, 2.2, 3.4); g.arc(x, 18, 1.1, 3.4, 2.2, true); g.fill();   // red caliper
+    g.strokeStyle = '#c8ccd4'; g.lineWidth = 0.42; g.lineCap = 'round';
+    for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 - 0.3; g.beginPath(); g.moveTo(x + Math.cos(a) * 0.6, 18 + Math.sin(a) * 0.6); g.lineTo(x + Math.cos(a) * 2.3, 18 + Math.sin(a) * 2.3); g.stroke(); }
+    g.fillStyle = '#e8e8ee'; g.beginPath(); g.arc(x, 18, 0.6, 0, 7); g.fill(); g.fillStyle = '#d40f1e'; g.beginPath(); g.arc(x, 18, 0.28, 0, 7); g.fill();
+  });
+  return (SPR.rrSide = c);
 }
 function flameSprite(f) {
   const k = 'flame' + f; if (SPR[k]) return SPR[k];
@@ -681,7 +783,10 @@ function drawSprite(img, worldW, scale, x, y, clipY, alpha) {    // x,y = bottom
   if (dw < 1 || dy > H || dx > W || dx + dw < 0) return;
   const clipH = clipY ? Math.max(0, dy + dh - clipY) : 0; if (clipH >= dh) return;   // hidden behind a hill
   if (alpha) g.globalAlpha = alpha;
-  g.drawImage(img, 0, 0, img.width, img.height * (1 - clipH / dh), dx, dy, dw, dh - clipH);
+  if (img.mips) {   // smooth sprite (Red Racer): pick the pre-shrunk copy nearest the size on screen
+    let m = img.mips[0]; for (const q of img.mips) if (q.width >= dw) m = q;
+    g.imageSmoothingEnabled = true; g.drawImage(m, 0, 0, m.width, m.height * (1 - clipH / dh), dx, dy, dw, dh - clipH); g.imageSmoothingEnabled = false;
+  } else g.drawImage(img, 0, 0, img.width, img.height * (1 - clipH / dh), dx, dy, dw, dh - clipH);
   if (alpha) g.globalAlpha = 1;
 }
 function render() {
@@ -967,6 +1072,11 @@ function upgradeCost(p) { return Math.round(ECONOMY.partPrice[TIERS[tierIdx(p.ti
 function drawPreviews() {
   document.querySelectorAll('canvas.prev').forEach(c => {
     const x = c.getContext('2d'), mine = !c.dataset.shape, b = mine ? myBase() : CARS.find(q => q.id === c.dataset.shape), tire = partById(S.equip.tire);
+    if (b.shape === 'redracer') {   // garage shows the Red Racer from the side, drawn smooth
+      if (!c.dataset.hi) { c.dataset.hi = 1; c.width *= 2; c.height *= 2; }
+      const sd = redRacerSide(), w = c.width * 0.94, h = w * sd.height / sd.width;
+      x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.clearRect(0, 0, c.width, c.height); x.globalAlpha = 1; x.drawImage(sd, c.width * 0.03, (c.height - h) / 2, w, h); c.style.imageRendering = 'auto'; return;
+    }
     const spr = carSprite(b.shape, carPaint(b, mine), mine && tire ? TIER_COLOR[tire.tier] : '#2b2b2b');
     x.imageSmoothingEnabled = false; x.clearRect(0, 0, c.width, c.height); x.globalAlpha = b.ghost ? 0.7 : 1;
     x.drawImage(spr, c.width * 0.08, c.height * 0.1, c.width * 0.84, c.width * 0.84 * 30 / 40);
