@@ -50,7 +50,8 @@ const ECONOMY = {
   dailyCash: 100,            // daily reward cash (plus one wheel spin)
   paintPrice: 50,            // one paint job
   patchPrice: 250,
-  boatPrice: 1500,           // the Boat for the swimming pool: same as the next car step (~5 races)           // a ruby gem patch fixes any broken part
+  boatPrice: 1500,
+  noodlePrize: 0.6,          // Pool Noodle Course (boat race) pays 60% of a normal Grassland place prize - just for fun           // the Boat for the swimming pool: same as the next car step (~5 races)           // a ruby gem patch fixes any broken part
   // Car prices live in the CARS list below. Starter cars are $300-$700,
   // so $1,000 buys a car AND a part. Next car step is $1,500 (~5 races).
   partPrice: { normal: 100, gold: 300, diamond: 800, amethyst: 2000, ruby: 5000 },
@@ -175,6 +176,10 @@ const MAPS = [
   { id: 'space',  name: 'Space',     emoji: '🚀', stars: 4, seed: 51, curvy: 1.2, hilly: 1.2, side: ['planet', 'crystal', 'planet2', 'crystal'], obst: ['cone'],
     col: { sky: ['#05031a', '#2a145e'], g1: '#1d1050', g2: '#170c44', r1: '#2f2470', r2: '#2a2066' } },
 ];
+// POOL NOODLE COURSE (Archer named it): a boat race where the whole track is a swimming pool.
+// It reuses Grassland's laps, bot speeds and prize tiers (id 'grass'), with a pool-deck look and water obstacles.
+const NOODLE_MAP = Object.assign({}, MAPS[0], { name: 'Pool Noodle Course', emoji: '🚤', noodle: true, seed: 77, curvy: 0.7, hilly: 0,
+  side: ['noodle', 'tube', 'noodle2', 'noodle'], obst: ['buoy', 'log'], col: Object.assign({}, MAPS[0].col, { g1: '#e6f3fa', g2: '#d3e8f3' }) });
 const WEATHER = [{ id: 'sun', name: '☀️ Sunny' }, { id: 'rain', name: '🌧️ Rain - slippy!' }, { id: 'snow', name: '❄️ Snow - slower, grippy' }];
 
 /* ================= SAVE (localStorage) ================= */
@@ -640,6 +645,11 @@ function objSprite(name, night) {
     case 'cone': mk(14, 16); for (let i = 0; i < 13; i++) px(6 - Math.floor(i / 3), i, Math.floor(i / 3) * 2 + 2, 1, (i > 4 && i < 8) ? '#fff' : '#ff7a1f'); px(0, 13, 14, 3, '#ff7a1f'); break;
     case 'hay': mk(24, 16); px(0, 2, 24, 14, '#e8c14a'); px(0, 2, 24, 2, '#f6dc7a'); for (let x = 2; x < 24; x += 5) px(x, 4, 1, 12, '#b8912a'); px(0, 8, 24, 1, '#9a7a1a'); break;
     case 'coin': mk(12, 12); pcircle(g, 6, 6, 5, '#e6a800'); pcircle(g, 6, 6, 4, '#ffd23f'); px(5, 3, 2, 6, '#e6a800'); px(4, 3, 1, 2, '#fff'); break;
+    case 'buoy': mk(14, 18); pcircle(g, 7, 10, 6, '#ff3b3b'); px(1, 8, 13, 3, '#ffffff'); px(6, 0, 2, 5, '#555'); pcircle(g, 7, 1, 1, '#ffd23f'); px(0, 15, 14, 3, '#bfe9ff'); break;   // red/white buoy
+    case 'log': mk(36, 12); px(2, 3, 32, 8, '#8b5a2b'); px(2, 3, 32, 2, '#a8743f'); pcircle(g, 3, 7, 4, '#c9945a'); pcircle(g, 3, 7, 2, '#8b5a2b'); px(0, 10, 36, 2, '#bfe9ff'); break;   // friendly floating log
+    case 'noodle': mk(8, 40); px(1, 0, 6, 40, '#ff66c4'); px(1, 0, 2, 40, '#ff99d8'); break;      // pool noodles standing on the pool deck
+    case 'noodle2': mk(8, 34); px(1, 0, 6, 34, '#5cff7a'); px(1, 0, 2, 34, '#a0ffb0'); break;
+    case 'tube': mk(24, 14); pcircle(g, 12, 7, 7, '#ffd23f'); pcircle(g, 12, 7, 3, '#e6f3fa'); px(4, 5, 3, 4, '#ff3b3b'); px(17, 5, 3, 4, '#ff3b3b'); break;   // swim ring
     case 'block': mk(16, 16); px(0, 0, 16, 16, '#ffb000'); px(1, 1, 14, 14, '#ffd23f'); px(1, 1, 14, 2, '#fff3a0');
       g.fillStyle = '#7a3c00'; g.font = 'bold 13px monospace'; g.fillText('?', 4, 13); break;
   }
@@ -647,7 +657,7 @@ function objSprite(name, night) {
 }
 // how wide each thing is in the world (the whole road is 4000 wide)
 const OBJ_W = { tree: 900, bush: 600, flowers: 600, sign: 1400, cactus: 700, rock: 1000, weed: 400, house: 1800, house2: 1800, house3: 1800, lamp: 400,
-  planet: 1600, planet2: 1200, crystal: 600, cone: 260, hay: 500, coin: 260, block: 400 };
+  planet: 1600, planet2: 1200, crystal: 600, cone: 260, hay: 500, coin: 260, block: 400, buoy: 320, log: 700, noodle: 220, noodle2: 220, tube: 600 };
 const CAR_W = 700;
 // far-away background (hills, dunes, skyline, stars) that scrolls slowly = parallax
 function bgLayer(map, night) {
@@ -705,8 +715,8 @@ function buildTrack(map) {
     if (kind === 5) for (let j = 0; j < 4; j++) segs[i + j].pad = x;
   }
   // SWIMMING POOL: a stretch of road that is water. Only used in real races (see startRace).
-  const pool = { a: 560, b: 600 };
-  for (let i = pool.a; i < pool.b; i++) { segs[i].pool = true; segs[i].items = []; segs[i].pad = null; }
+  const pool = map.noodle ? { a: 0, b: segs.length } : { a: 560, b: 600 };   // Pool Noodle Course: the whole lap is water
+  for (let i = pool.a; i < pool.b; i++) { segs[i].pool = true; if (!map.noodle) segs[i].items = []; segs[i].pad = null; }
   // mini-map: walk along the curves to draw the loop, then nudge the end to meet the start
   const pts = []; let a = 0, x = 0, y = 0;
   const csum = segs.reduce((t, s) => t + s.curve, 0) * 0.004;
@@ -770,7 +780,7 @@ function playerStats() {
   };
 }
 function startRace(opts) {
-  const map = MAPS.find(m => m.id === opts.map), track = buildTrack(map), mode = opts.mode, lvl = DIFFICULTY.levels[S.settings.diff];
+  const map = opts.noodle ? NOODLE_MAP : MAPS.find(m => m.id === opts.map), track = buildTrack(map), mode = opts.mode, lvl = DIFFICULTY.levels[S.settings.diff];
   const np = S.settings.night, night = opts.night != null ? opts.night : (np === 'always' || (np === 'auto' && mode !== 'practice' && Math.random() < 0.25));
   R = {
     mode, map, track, night, blood: night && (opts.blood != null ? opts.blood : Math.random() < 0.35),
@@ -780,7 +790,7 @@ function startRace(opts) {
     p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, rocketT: 0, lockT: 0, rocketUsed: false, bounceLeft: 0, hornUsed: false,
       inPool: false, towing: false, edgeT: 0, poolBumps: 0, fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
   };
-  R.splashT = 0; if (mode !== 'race') track.pool = null;   // the swimming pool is only in real races (practice + qualifying stay simple)
+  R.noodle = !!opts.noodle; R.splashT = 0; if (mode !== 'race') track.pool = null;   // the swimming pool is only in real races (practice + qualifying stay simple)
   const skills = mode === 'practice' ? [DIFFICULTY.practiceBot] : mode === 'qualify' ? [] : DIFFICULTY.mapSkill[map.id].map(s => s * lvl);
   const city = map.id === 'city';
   const looks = [['car', '#5cff7a', 'Zippy'], [city ? 'police' : 'truck', city ? '#2a3a8b' : '#ff8c00', city ? 'Officer Vroom' : 'Rusty'], ['shark', '#00c2ff', 'Bubbles']];
@@ -889,6 +899,7 @@ function touchSegment(seg) {
     it.taken = true;
     if (it.type === 'block') { luckyBlock(); return; }
     if (p.shieldT > 0 || p.ghostT > 0 || rocketSafe()) { addPop('Blocked! 🛡️', '#5bd0ff'); return; }  // cone or hay bale
+    if (it.type === 'buoy' || it.type === 'log') { p.speed *= 0.6; R.splashT = 0.8; addPop('SPLASH! 💦', '#5bd0ff'); sound('tap'); return; }   // water bumps: just slow down, no damage
     p.speed *= 0.55; p.tireHP = Math.max(0, p.tireHP - 15); addPop('OOPS!', '#ff7a8a'); sound('oops');
     if (p.tireHP <= 0 && S.equip.tire && !isBroken('tire')) breakPart('tire');
   });
@@ -1339,6 +1350,7 @@ const SCREENS = {
       '<div class="card" style="text-align:center">' + preview(240, 180) + '<div class="big">' + myBase().name + '</div></div>' +
       '<div class="card" style="text-align:center;max-width:420px">' +
       btn('🏎️ RACE!', 'raceMenu', '', 'green', !S.passedTest) + (S.passedTest ? '' : '<div class="muted">Beat the practice bot to unlock races!</div>') +
+      btn('🚤 Pool Noodle Course', 'noodle', '', S.boat ? 'blue' : 'grey') + (S.boat ? '' : '<div class="muted">🔒 Buy the Splash Boat in the Garage first!</div>') +
       btn('🤖 Practice test', 'practice', '', 'blue') + btn('🔧 Garage', 'go', 'garage') +
       btn('🎡 Daily wheel' + (dailyReady() ? ' ⭐' : ''), 'go', 'wheel', dailyReady() ? '' : 'grey') + btn('🏆 Trophies', 'go', 'trophies') + '</div>' +
       '<div class="card"><h2>⚙️ Options</h2>' + opt('Difficulty:', 'diff', ['easy', 'normal', 'hard'], d.diff) +
@@ -1464,6 +1476,7 @@ const ACT = {
   buyBoat: () => { if (S.boat || !spend(ECONOMY.boatPrice)) return; S.boat = true; save(); popup('🎉 You bought a boat! Find the pool in a race! ⛵'); show('garage'); },
   buyPatch: () => { if (spend(ECONOMY.patchPrice)) { S.patches++; save(); show('garage'); } },
   paint: c => { if (S.paint === c) return; if (S.freePaints > 0) S.freePaints--; else if (!spend(ECONOMY.paintPrice)) return; S.paint = c; save(); show('garage'); },
+  noodle: () => { if (!S.boat) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } startRace({ mode: 'race', noodle: true, weather: 'sun' }); },
   practice: () => startRace({ mode: 'practice', map: 'grass' }),
   raceMenu: () => { if (!S.passedTest) return; raceSetup = { map: 'grass', weather: pick(WEATHER).id }; show('raceMenu'); },
   pickMap: id => { raceSetup.map = id; raceSetup.grid = null; show('raceMenu'); },
@@ -1512,7 +1525,7 @@ function showResults() {
     rows.push(['Coins (' + r.coins + ')', coinCash]);
     extra = pass ? h2('✅ You beat the practice bot! Real races are open!') : h2('So close! Try again - you can do it! 💪');
   } else {
-    const placePrize = ECONOMY.placePrize[place - 1] || 0;
+    const placePrize = Math.round((ECONOMY.placePrize[place - 1] || 0) * (r.noodle ? ECONOMY.noodlePrize : 1));
     rows.push([ord(place) + ' place prize', placePrize], [m.name + ' bonus' + (r.laps > 2 ? ' + ' + r.laps + '-lap bonus' : ''), Math.round(placePrize * prizeMult(m)) - placePrize], ['Coins (' + r.coins + ')', coinCash]);
     if (place === 1) {
       S.wins++; S.streak++;
@@ -1551,6 +1564,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, NOODLE_MAP };   // for testing only
 </script>
 </body></html>

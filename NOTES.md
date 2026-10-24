@@ -188,3 +188,16 @@ Before that, all 22 Round 2 checks passed, with **zero console errors**. See `te
 ## Paint shop status (checked 24 Oct 2026)
 Partly done. It works: the Garage 🎨 Paint tab has 12 colour circles at $50 each (`ECONOMY.paintPrice`), uses free paints from the wheel first, saves `S.paint`, and your car shows the colour in the garage and in races. Screenshot: `shots/paint-shop-now.png`.
 Still to do: a preview before you pay (right now each tap costs $50 straight away); paint does nothing on the Ghost Car, Mini Bug or rocket family, and only the Ghost Car says so; no stripes or patterns; no boat paint.
+
+## Pool Noodle Course - boat race (24 Oct 2026, Archer named it; built locally, NOT pushed - waiting for Jeff's OK)
+- **How to start:** Home → big **🚤 Pool Noodle Course** button just under 🏎️ RACE!. If you don't own the Splash Boat, the button is grey with "🔒 Buy the Splash Boat in the Garage first!" and tapping it only shows that message. It doesn't need the practice test.
+- The whole lap is a swimming pool (it reuses the pool drawing: ripples, white tiles, lane ropes). The ground is a pale pool deck with pool noodles and swim rings standing on it. You and the 3 bots are boats from the start.
+- **Water obstacles:** red/white buoys and floating logs (5 of each per lap). Hitting one = "SPLASH! 💦" and you drop to 60% speed. No tire damage and no money lost. Flying over them works. Coins and lucky blocks are still on the water.
+- **Prize:** the normal results screen. The place prize is `ECONOMY.noodlePrize` = 60% of Grassland's (1st $120, 2nd $72, 3rd $48, 4th $30) plus coins. A win gives a "Pool Noodle Course" trophy and a pick-a-part prize, like Grassland. It uses Grassland's 2 laps and bot speeds.
+- Code: `NOODLE_MAP` (`src/p2.js`), whole-lap pool in `buildTrack()` + buoy/log/noodle/tube sprites (`src/p3.js`), `opts.noodle` / `R.noodle` in `startRace()` and the water bump in `touchSegment()` (`src/p4.js`), the menu button, the `noodle` action and the prize (`src/p6.js`).
+- Tests: 8 new checks (95/95 pass). Screenshots: `shots/noodle-01-menu-locked.png`, `noodle-02-menu-unlocked.png`, `noodle-03-racing-on-water.png`, `noodle-04-hit-obstacle.png`.
+
+**Next steps**
+- More obstacles (bouncy beach balls, rubber ducks that waddle across), a water-slide ramp jump, waves.
+- Its own bot names and a noodle-coloured lane-rope edge.
+- A Pool Noodle Course trophy colour, and more boat types for the course.
