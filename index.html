@@ -180,6 +180,19 @@ const MAPS = [
 // It reuses Grassland's laps, bot speeds and prize tiers (id 'grass'), with a pool-deck look and water obstacles.
 const NOODLE_MAP = Object.assign({}, MAPS[0], { name: 'Pool Noodle Course', emoji: '🚤', noodle: true, seed: 77, curvy: 0.7, hilly: 0,
   side: ['noodle', 'tube', 'noodle2', 'noodle'], obst: ['buoy', 'log'], col: Object.assign({}, MAPS[0].col, { g1: '#e6f3fa', g2: '#d3e8f3' }) });
+// BOATS: the Splash Boat (owned = S.boat, the old save field) plus 5 newer boats (owned ids in S.boats).
+// S.boatSel = the boat you use. Each new boat has ONE power, and it only works while you are a boat on the water.
+const BOATS = [
+  { id: 'splash',  name: 'Splash Boat',          emoji: '⛵', price: ECONOMY.boatPrice, paint: null,      ability: null,     desc: 'The classic boat. Your car turns into a boat on the water.' },
+  { id: 'dolphin', name: 'Dolphin Dasher',       emoji: '🐬', price: 2000, paint: '#3fb6ff', ability: 'steer',  desc: 'Super steering! Turns much sharper on the water.' },
+  { id: 'bubble',  name: 'Bubble Bath Boat',     emoji: '🫧', price: 2500, paint: '#ff8fd8', ability: 'bubble', desc: 'Bubble shield! Bumping one buoy or log does nothing (once a race).' },
+  { id: 'tuna',    name: 'Turbo Tuna',           emoji: '🐟', price: 3500, paint: '#ff9a3d', ability: 'turbo',  desc: 'Turbo Splash! A big speed burst when you first hit the water (once a race).' },
+  { id: 'ducky',   name: 'Rubber Ducky Bouncer', emoji: '🦆', price: 4500, paint: '#ffd23f', ability: 'bounce', desc: 'Boing! Bounces off every buoy and log without slowing down.' },
+  { id: 'thunder', name: 'Thunder Wave',         emoji: '⚡', price: 6000, paint: '#7a5cff', ability: 'fast',   desc: 'Fastest boat! 25% more top speed on the water.' },
+];
+const ownsBoat = id => id === 'splash' ? !!S.boat : (S.boats || []).includes(id);
+const hasBoat = () => BOATS.some(b => ownsBoat(b.id));
+function curBoat() { const b = BOATS.find(x => x.id === S.boatSel); return b && ownsBoat(b.id) ? b : (BOATS.find(x => ownsBoat(x.id)) || BOATS[0]); }
 const WEATHER = [{ id: 'sun', name: '☀️ Sunny' }, { id: 'rain', name: '🌧️ Rain - slippy!' }, { id: 'snow', name: '❄️ Snow - slower, grippy' }];
 
 /* ================= SAVE (localStorage) ================= */
@@ -198,7 +211,7 @@ function freshSave() {
   return { v: 2, money: ECONOMY.startMoney, cars: [ghost], parts: [tire], equip: { car: ghost.id, tire: tire.id, boost: null, wing: null, horn: null },
     paint: '#ff2d55', passedTest: false, trophies: [], wins: 0, races: 0, streak: 0, lastDaily: '', luck: { spins: 0, sinceRare: 0, sinceRuby: 0 },
     patches: 0, freePaints: 0, moonTaps: 0, moonBonus: false, lastWeekly: Date.now(), maxMoney: ECONOMY.startMoney,
-    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false, boat: false };   // boat: bought the pool Boat (old saves get false)
+    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false, boat: false, boats: [], boatSel: 'splash' };   // boats/boatSel: the 5 newer boats (old saves get [] and 'splash')   // boat: bought the pool Boat (old saves get false)
 }
 // Round 1 saves are carried over: money, wins, races, cars, parts, trophies.
 function migrateV1(o) {
@@ -788,7 +801,7 @@ function startRace(opts) {
     laps: mode === 'qualify' ? 1 : DIFFICULTY.laps[mode === 'practice' ? 'practice' : map.id],
     phase: 'count', count: 3, t: 0, stats: playerStats(), coins: 0, pitPaid: 0, pops: [], item: null, broke: [], skyX: 0, frame: 0, bots: [],
     p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, rocketT: 0, lockT: 0, rocketUsed: false, bounceLeft: 0, hornUsed: false,
-      inPool: false, towing: false, edgeT: 0, poolBumps: 0, fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
+      inPool: false, towing: false, turboUsed: false, splashTurboT: 0, bubbleUsed: false, edgeT: 0, poolBumps: 0, fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
   };
   R.noodle = !!opts.noodle; R.splashT = 0; if (mode !== 'race') track.pool = null;   // the swimming pool is only in real races (practice + qualifying stay simple)
   const skills = mode === 'practice' ? [DIFFICULTY.practiceBot] : mode === 'qualify' ? [] : DIFFICULTY.mapSkill[map.id].map(s => s * lvl);
@@ -821,13 +834,17 @@ function update(dt) {
   // weather: rain = slippy, snow = slower but grippy
   const grip = st.grip * (R.weather === 'rain' ? 0.7 : R.weather === 'snow' ? 1.25 : 1);
   let top = st.max * (R.weather === 'snow' ? 0.9 : 1);
-  ['boostT', 'zoomT', 'shieldT', 'ghostT', 'glideT', 'rocketT', 'lockT'].forEach(k => p[k] = Math.max(0, p[k] - dt));
+  ['boostT', 'zoomT', 'shieldT', 'ghostT', 'glideT', 'rocketT', 'lockT', 'splashTurboT'].forEach(k => p[k] = Math.max(0, p[k] - dt));
   if (p.boostT > 0) top *= space ? 1.08 : st.boostPow;   // in space boost is weaker but lifts you a little
   if (p.ghostT > 0) top *= 1.7;
   if (p.zoomT > 0) top *= 1.3;
   const rk = rocketOn();                                  // rocket family power, if one is running
   if (rk && rk.ability === 'zoom') top *= rk.zoomPow;
   if (isBroken('tire')) top *= 0.85;
+  const bo = p.inPool && hasBoat() ? curBoat().ability : null;   // boat power (only while you are a boat on the water)
+  if (bo === 'fast') top *= 1.25;                                  // Thunder Wave
+  if (bo === 'turbo' && !p.turboUsed && R.phase === 'go') { p.turboUsed = true; p.splashTurboT = 3; p.speed += BASE_MAX * 0.3; addPop('💦 TURBO SPLASH!', '#5bd0ff'); sound('go'); }   // Turbo Tuna
+  if (p.splashTurboT > 0) top *= 1.5;
   if (p.shieldT > 0 && isBroken('tire')) fixTire('Shield fixed your tire! 🛡️');
   R.splashT = Math.max(0, R.splashT - dt);
   if (p.edgeT > 0) { p.edgeT -= dt; p.speed = 0; if (p.edgeT <= 0) { p.towing = true; addPop('🦆 Duck Floaty to the rescue!', '#ffd23f'); } updateBots(dt); ranking(); return; }   // waiting at the pool edge (no boat)
@@ -839,7 +856,7 @@ function update(dt) {
   const brake = done ? 0 : keys.brake ? 1 : DRAG.on ? DRAG.brake : 0;
   const steerIn = clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + (DRAG.on ? DRAG.steer : 0), -1, 1);
   // steering, and bends pushing you outwards
-  const steer = dt * 2.2 * Math.min(1, speedPct + 0.2) * st.handle * (p.air > 0 ? 0.6 : 1);
+  const steer = dt * 2.2 * Math.min(1, speedPct + 0.2) * st.handle * (p.air > 0 ? 0.6 : 1) * (bo === 'steer' ? 1.6 : 1);   // Dolphin Dasher steers sharper
   if (!done) p.x += steer * steerIn; else p.x = lerp(p.x, 0, dt);
   p.x -= steer * speedPct * seg.curve * 0.3 / grip;
   // speed
@@ -885,10 +902,10 @@ function poolCheck() {
   const p = R.p, pl = R.track.pool; if (!pl) return;
   const zi = Math.floor((((p.dist % R.track.len) + R.track.len) % R.track.len) / SEG), inP = zi >= pl.a && zi < pl.b;
   if (inP && !p.inPool) {
-    if (S.boat || p.towing) { p.inPool = true; R.splashT = 0.8; addPop(S.boat ? '⛵ BOAT MODE! SPLASH!' : '🦆 Hold on tight!', '#5bd0ff'); sound('tap'); }
+    if (hasBoat() || p.towing) { p.inPool = true; R.splashT = 0.8; addPop(hasBoat() ? '⛵ BOAT MODE! SPLASH!' : '🦆 Hold on tight!', '#5bd0ff'); sound('tap'); }
     else { p.dist -= (zi - pl.a) * SEG + SEG * 1.5; p.speed = 0; p.air = 0; p.vy = 0; p.edgeT = 2.5; p.poolBumps++; addPop('Boing! You need a boat!', '#5bd0ff'); sound('oops'); }
-  } else if (!inP && p.inPool) { p.inPool = false; p.towing = false; R.splashT = 0.8; addPop(S.boat ? '🚗 Back to a car!' : 'Thanks, Duck! 🦆', '#ffd23f'); }
-  if (p.inPool && !S.boat) p.speed = Math.min(p.speed, R.stats.max * 0.3);
+  } else if (!inP && p.inPool) { p.inPool = false; p.towing = false; R.splashT = 0.8; addPop(hasBoat() ? '🚗 Back to a car!' : 'Thanks, Duck! 🦆', '#ffd23f'); }
+  if (p.inPool && !hasBoat()) p.speed = Math.min(p.speed, R.stats.max * 0.3);
 }
 function touchSegment(seg) {
   const p = R.p;
@@ -900,6 +917,9 @@ function touchSegment(seg) {
     it.taken = true;
     if (it.type === 'block') { luckyBlock(); return; }
     if (p.shieldT > 0 || p.ghostT > 0 || rocketSafe()) { addPop('Blocked! 🛡️', '#5bd0ff'); return; }  // cone or hay bale
+    if ((it.type === 'buoy' || it.type === 'log') && hasBoat()) { const ab = curBoat().ability;
+      if (ab === 'bounce') { addPop('BOING! Bounced off! 🦆', '#ffd23f'); sound('tap'); return; }                                   // Rubber Ducky Bouncer
+      if (ab === 'bubble' && !p.bubbleUsed) { p.bubbleUsed = true; addPop('🫧 Bubble shield popped!', '#bfefff'); sound('tap'); return; } }   // Bubble Bath Boat
     if (it.type === 'buoy' || it.type === 'log') { p.speed *= 0.6; R.splashT = 0.8; addPop('SPLASH! 💦', '#5bd0ff'); sound('tap'); return; }   // water bumps: just slow down, no damage
     p.speed *= 0.55; p.tireHP = Math.max(0, p.tireHP - 15); addPop('OOPS!', '#ff7a8a'); sound('oops');
     if (p.tireHP <= 0 && S.equip.tire && !isBroken('tire')) breakPart('tire');
@@ -1147,8 +1167,8 @@ function drawPlayer(horizon) {
   const rk = rocketOn();
   const see = b.ghost || p.ghostT > 0 ? 0.6 : rk && rk.ability === 'sky' ? 0.5 + 0.15 * Math.sin(R.t * 12) : 0;   // ghost car + Sky Sparkle are see-through
   if (p.towing) { g.fillStyle = '#ffd23f'; g.beginPath(); g.ellipse(cx, carY - cw * 0.08, cw * 0.62, cw * 0.16, 0, 0, 7); g.fill(); g.font = Math.round(cw * 0.3) + 'px system-ui'; g.textAlign = 'center'; g.fillText('🦆', cx + cw * 0.55, carY - cw * 0.12); }   // duck floaty ring
-  if (p.inPool && S.boat) {   // BOAT MODE: your car became a boat, with spray behind
-    drawSprite(boatSprite(carPaint(b, true)), CAR_W, scale, cx, carY + cw * 0.04, 0, see);
+  if (p.inPool && hasBoat()) {   // BOAT MODE: your car became a boat, with spray behind
+    drawSprite(boatSprite(curBoat().paint || carPaint(b, true)), CAR_W, scale, cx, carY + cw * 0.04, 0, see);
     g.fillStyle = 'rgba(255,255,255,.8)'; for (let i = 0; i < 10; i++) { const ph = (R.t * 2.5 + i / 10) % 1; g.beginPath(); g.arc(cx + (i % 2 ? 1 : -1) * cw * (0.1 + ph * 0.45), carY - ph * cw * 0.2, cw * 0.04 * (1 - ph) + K, 0, 7); g.fill(); }
   } else drawSprite(carSprite(b.shape, p.paint || carPaint(b, true), p.base ? '#2b2b2b' : tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
   if (R.splashT > 0) { const ph = 1 - R.splashT / 0.8; g.fillStyle = 'rgba(200,240,255,' + (1 - ph) + ')'; for (let i = 0; i < 18; i++) { const a = Math.PI + (i / 17) * Math.PI; g.beginPath(); g.arc(cx + Math.cos(a) * cw * (0.3 + ph * 0.7), carY - cw * 0.1 + Math.sin(a) * cw * (0.2 + ph * 0.6), cw * 0.05, 0, 7); g.fill(); } }   // big splash
@@ -1200,12 +1220,12 @@ function drawHUD() {
   const pl = R.track.pool;
   if (pl && !p.finished) {   // pool messages
     const zi = Math.floor((((p.dist % R.track.len) + R.track.len) % R.track.len) / SEG), ahead = pl.a - zi;
-    if (p.edgeT > 0 || (!S.boat && !p.towing && ahead > 0 && ahead < 60)) {
+    if (p.edgeT > 0 || (!hasBoat() && !p.towing && ahead > 0 && ahead < 60)) {
       const bw = Math.min(W * 0.8, 720 * k), bh = 120 * k, bx = (W - bw) / 2, by = H * 0.33;
       g.fillStyle = 'rgba(20,90,170,.92)'; rrect(g, bx, by, bw, bh, 24 * k); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 4 * k; g.stroke();
       txt('🚤 You need a boat!', W / 2, by + 50 * k, 40, '#fff', 'center');
       txt(p.edgeT > 0 ? '🦆 A duck floaty is coming to help...' : 'Buy one in the Garage', W / 2, by + 95 * k, 26, '#ffd23f', 'center');
-    } else if (S.boat && ahead > 0 && ahead < 40) txt('🏊 Pool ahead - your boat is ready! ⛵', W / 2, H * 0.2, 28, '#7fe6ff', 'center');
+    } else if (hasBoat() && ahead > 0 && ahead < 40) txt('🏊 Pool ahead - your boat is ready! ⛵', W / 2, H * 0.2, 28, '#7fe6ff', 'center');
   }
   R.pops.forEach((q, i) => txt(q.text, W / 2, H * 0.26 + i * 42 * k - (1.6 - q.t) * 30 * k, 32, q.color, 'center'));
   drawMinimap();
@@ -1594,7 +1614,7 @@ const SCREENS = {
       '<div class="card" style="text-align:center">' + preview(240, 180) + '<div class="big">' + myBase().name + '</div></div>' +
       '<div class="card" style="text-align:center;max-width:420px">' +
       btn('🏎️ RACE!', 'raceMenu', '', 'green', !S.passedTest) + (S.passedTest ? '' : '<div class="muted">Beat the practice bot to unlock races!</div>') +
-      btn('🚤 Pool Noodle Course', 'noodle', '', S.boat ? 'blue' : 'grey') + (S.boat ? '' : '<div class="muted">🔒 Buy the Splash Boat in the Garage first!</div>') +
+      btn('🚤 Pool Noodle Course', 'noodle', '', hasBoat() ? 'blue' : 'grey') + (hasBoat() ? '' : '<div class="muted">🔒 Buy the Splash Boat (or any boat) in the Garage first!</div>') +
       btn('👫 Friend Race', 'go', 'friend', 'green') + btn('🌐 Online Friend Race', 'go', 'online', 'blue') +
       btn('🤖 Practice test', 'practice', '', 'blue') + btn('🔧 Garage', 'go', 'garage') +
       btn('🎡 Daily wheel' + (dailyReady() ? ' ⭐' : ''), 'go', 'wheel', dailyReady() ? '' : 'grey') + btn('🏆 Trophies', 'go', 'trophies') + '</div>' +
@@ -1605,7 +1625,7 @@ const SCREENS = {
       '<p class="muted">Wins: ' + S.wins + ' · Races: ' + S.races + ' · Win streak: ' + S.streak + '</p></div></div>';
   },
   garage() {
-    const tabs = { cars: '🚗 Cars', tire: '🛞 Tires', boost: '🔥 Boost', wing: '🪽 Wings', horn: '📯 Horns', paint: '🎨 Paint', boat: '⛵ Boat', mine: '🎒 My parts' };
+    const tabs = { cars: '🚗 Cars', tire: '🛞 Tires', boost: '🔥 Boost', wing: '🪽 Wings', horn: '📯 Horns', paint: '🎨 Paint', boat: '⛵ Boats', mine: '🎒 My parts' };
     return '<h1>🔧 Garage</h1><div class="row"><div class="card" style="text-align:center;max-width:300px">' + preview(240, 180) + '<div class="big">' + myBase().name + '</div>' + statBars() + '</div>' +
       '<div style="flex:3 1 500px"><div class="tabs">' + Object.entries(tabs).map(([k, v]) => '<button class="tab ' + (garageTab === k ? 'on' : '') + '" data-act="tab" data-arg="' + k + '">' + v + '</button>').join('') + '</div><div class="row">' + garageList() + '</div></div></div>' +
       center(btn('⬅ Back', 'go', 'home', 'blue'));
@@ -1675,9 +1695,11 @@ function garageList() {
     else act = open ? priceBtn(c.price, 'buyCar', c.id) : '<div class="muted">' + lockText(c.un) + '</div>';
     return '<div class="card ' + (eq ? 'on' : '') + (open || own ? '' : ' lock') + '" style="text-align:center">' + preview(200, 100, c.id) + '<div class="big" style="font-size:21px">' + c.name + (c.ghost ? ' 👻' : '') + (c.rocket ? ' 🚀' : '') + '</div>' + (c.rocket ? '<div style="color:#ffd23f;font-weight:700">🚀 ' + c.rocket.desc + '</div>' : c.id === 'rocket' ? '<div style="color:#ffd23f;font-weight:700">👑 Boss of the Rocket Family!</div>' : '') + '<div class="muted">Speed ' + c.speed + ' · Handling ' + c.handle + ' · Grip ' + c.grip + '</div>' + act + '</div>';
   }).join('');
-  if (T === 'boat') return '<div class="card ' + (S.boat ? 'on' : '') + '" style="max-width:520px;text-align:center"><canvas class="prev" data-shape="boat" width="300" height="150" style="width:300px;height:150px"></canvas>' +
-    '<div class="big">⛵ Splash Boat</div><p>Races have a 🏊 swimming pool! With a boat, your car turns into a boat and zooms across the water.</p>' +
-    (S.boat ? '<b>✅ You own a boat! It comes with you in every race.</b>' : priceBtn(ECONOMY.boatPrice, 'buyBoat', '')) + '</div>';
+  if (T === 'boat') return '<div class="card" style="max-width:100%;flex-basis:100%;text-align:center">Races have a 🏊 swimming pool! With a boat, your car turns into a boat. Each boat has its own power on the water.</div>' +
+    BOATS.map(bt => { const own = ownsBoat(bt.id), use = own && curBoat().id === bt.id;
+      const act = use ? '<b>✅ Using this boat</b>' : own ? btn('Use this boat', 'useBoat', bt.id, 'blue') : bt.id === 'splash' ? priceBtn(bt.price, 'buyBoat', '') : priceBtn(bt.price, 'buyBoatX', bt.id);
+      return '<div class="card ' + (use ? 'on' : '') + '" data-boat-card="' + bt.id + '" style="text-align:center"><canvas class="prev" data-shape="boat" data-boat="' + bt.id + '" width="200" height="100" style="width:200px;height:100px"></canvas>' +
+        '<div class="big" style="font-size:21px">' + bt.emoji + ' ' + bt.name + '</div><div style="color:#ffd23f;font-weight:700">' + bt.desc + '</div>' + act + '</div>'; }).join('');
   if (T === 'paint') return '<div class="card" style="max-width:600px;text-align:center"><p>Paint costs $' + ECONOMY.paintPrice + (S.freePaints ? ' · You have ' + S.freePaints + ' free paint 🎨' : '') + (myBase().ghost ? '<br>(The Ghost Car always looks ghostly!)' : '') + '</p>' +
     PAINTS.map(c => '<button data-act="paint" data-arg="' + c + '" style="width:64px;height:64px;border-radius:50%;margin:6px;border:' + (S.paint === c ? '5px solid #ffd23f' : '3px solid #fff5') + ';background:' + c + '"></button>').join('') + '</div>';
   if (T === 'mine') {
@@ -1701,7 +1723,7 @@ function fixCost(p) { return catOf(p).kind === 'tire' ? (p.tier === 'ruby' ? ECO
 function upgradeCost(p) { return Math.round(ECONOMY.partPrice[TIERS[tierIdx(p.tier) + 1]] - ECONOMY.partPrice[p.tier] * ECONOMY.upgradeDiscount); }
 function drawPreviews() {
   document.querySelectorAll('canvas.prev').forEach(c => {
-    if (c.dataset.shape === 'boat') { const x = c.getContext('2d'), sd = boatSide(carPaint(myBase(), true)); if (!c.dataset.hi) { c.dataset.hi = 1; c.width *= 2; c.height *= 2; }
+    if (c.dataset.shape === 'boat') { const x = c.getContext('2d'), sd = boatSide((BOATS.find(q => q.id === c.dataset.boat) || {}).paint || carPaint(myBase(), true)); if (!c.dataset.hi) { c.dataset.hi = 1; c.width *= 2; c.height *= 2; }
       x.imageSmoothingEnabled = true; x.clearRect(0, 0, c.width, c.height); const w = c.width * 0.96, h = w * sd.height / sd.width; x.drawImage(sd, c.width * 0.02, (c.height - h) / 2, w, h); return; }
     const x = c.getContext('2d'), mine = !c.dataset.shape, b = mine ? myBase() : CARS.find(q => q.id === c.dataset.shape), tire = partById(S.equip.tire);
     // garage shows every car from the side, drawn smooth (pre-rendered once by carSide)
@@ -1742,10 +1764,13 @@ const ACT = {
   upgrade: id => { const p = partById(id); if (!p || tierIdx(p.tier) >= 4 || !spend(upgradeCost(p))) return; p.tier = TIERS[tierIdx(p.tier) + 1]; save(); popup('✨ Upgraded to ' + p.tier + '!'); show('garage'); },
   fix: id => { const p = partById(id); if (!p || !p.broken || !spend(fixCost(p))) return; p.broken = false; save(); show('garage'); },
   patch: id => { const p = partById(id); if (!p || !p.broken || S.patches < 1) return; S.patches--; p.broken = false; save(); popup('🩹 Patched!'); show('garage'); },
-  buyBoat: () => { if (S.boat || !spend(ECONOMY.boatPrice)) return; S.boat = true; save(); popup('🎉 You bought a boat! Find the pool in a race! ⛵'); show('garage'); },
+  buyBoat: () => { if (S.boat || !spend(ECONOMY.boatPrice)) return; S.boat = true; S.boatSel = 'splash'; save(); popup('🎉 You bought a boat! Find the pool in a race! ⛵'); show('garage'); },
   buyPatch: () => { if (spend(ECONOMY.patchPrice)) { S.patches++; save(); show('garage'); } },
   paint: c => { if (S.paint === c) return; if (S.freePaints > 0) S.freePaints--; else if (!spend(ECONOMY.paintPrice)) return; S.paint = c; save(); show('garage'); },
-  noodle: () => { if (!S.boat) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } startRace({ mode: 'race', noodle: true, weather: 'sun' }); },
+  buyBoatX: id => { const bt = BOATS.find(b => b.id === id); if (!bt || bt.id === 'splash' || ownsBoat(id) || !spend(bt.price)) return;
+    S.boats = (S.boats || []).concat(id); S.boatSel = id; save(); popup('🎉 You got the ' + bt.emoji + ' ' + bt.name + '! ' + bt.desc); show('garage'); },
+  useBoat: id => { if (!ownsBoat(id)) return; S.boatSel = id; save(); show('garage'); },
+  noodle: () => { if (!hasBoat()) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } startRace({ mode: 'race', noodle: true, weather: 'sun' }); },
   makeCode: () => { const el = $('hostCode'); if (el) el.value = makeCode(); },
   hostGo: async () => { const m = await hostRace(($('hostCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
   joinGo: async () => { const m = await joinRace(($('joinCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
@@ -1842,6 +1867,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, BOATS, curBoat, hasBoat, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline };   // for testing only
 </script>
 </body></html>

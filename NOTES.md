@@ -224,3 +224,18 @@ Still to do: a preview before you pay (right now each tap costs $50 straight awa
 - Screenshots: `shots/online-01-start-or-join.png`, `online-02-race-4-players.png`, `online-03-results.png`, `online-04-lobby-2-players.png`.
 
 **Next steps:** finish-time tiebreak, a synced start time, a "copy code" button, a host map preview, maybe item boxes in online races.
+
+## Five new boats (25 Oct 2026, built locally, NOT pushed - waiting for Jeff's OK)
+- Garage **⛵ Boats** tab now lists 6 boats. Tap **Buy** (green, shows "Need $X more" when short) and the new boat becomes the one you use; tap **Use this boat** to switch. Each boat has its own colour on the water.
+| Boat | Price | Power (only while you are a boat on the water) |
+|---|---|---|
+| ⛵ Splash Boat | $1,500 | The classic boat, no special power |
+| 🐬 Dolphin Dasher | $2,000 | Super steering: turns 60% sharper |
+| 🫧 Bubble Bath Boat | $2,500 | Bubble shield: the first buoy/log hit each race does nothing |
+| 🐟 Turbo Tuna | $3,500 | Turbo Splash: once a race, a 3 s burst (+50% top speed) the first time you hit the water |
+| 🦆 Rubber Ducky Bouncer | $4,500 | Bounces off every buoy and log with no slow-down |
+| ⚡ Thunder Wave | $6,000 | Fastest boat: +25% top speed on water |
+- Save: `S.boat` still means "owns the Splash Boat" (old saves unchanged). New fields `S.boats` (ids of new boats, default `[]`) and `S.boatSel` (default `'splash'`) fill in automatically on load. Owning any boat unlocks the pool and the Pool Noodle Course.
+- Code: `BOATS`, `ownsBoat()`, `hasBoat()`, `curBoat()` in `src/p2.js`; powers in `update()` and `touchSegment()` (`src/p4.js`); boat colour in `src/p5.js`; Boats tab + `buyBoatX` / `useBoat` in `src/p6.js`.
+- Note: race pool sections have no buoys/logs, so the Ducky and Bubble powers only show up on the Pool Noodle Course; speed, steering and turbo work in both.
+- Tests: 23 new checks in `tests/play.js` (137/137 pass). Screenshots: `shots/boats-01..08-*.png`.
