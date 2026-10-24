@@ -201,3 +201,26 @@ Still to do: a preview before you pay (right now each tap costs $50 straight awa
 - More obstacles (bouncy beach balls, rubber ducks that waddle across), a water-slide ramp jump, waves.
 - Its own bot names and a noodle-coloured lane-rope edge.
 - A Pool Noodle Course trophy colour, and more boat types for the course.
+
+## Friend Race - 2 players on one iPad (24 Oct 2026, built locally, NOT pushed - waiting for Jeff's OK)
+- **Start:** Home → **👫 Friend Race** → pick a map → Player 2 picks a free car to borrow (Zoomer, Little Beetle, Monster Truck, Shark Car, Police Cruiser) → 🏁 GO!
+- **Split screen:** landscape = left half Player 1, right half Player 2 (portrait = top / bottom). Each half is the normal 3D road with its own camera, and your friend's car shows in your view. Split mode draws 110 road segments instead of 160 to keep the iPad smooth.
+- **Controls:** each player pushes anywhere on their OWN half (up = go, slide = steer, pull back = brake). Multi-touch: each finger belongs to the half it started on, one finger per player. Keyboard: Player 1 = W A S D, Player 2 = arrow keys. The ✖ quit button is the only on-screen button.
+- **Choices (kept simple):** no bots, just the two of you. No pool (a friend without a boat would get stuck). No fly, boost or rockets in split mode: coins, zoom pads, lucky blocks (= a zoom) and cones (= slow down, no damage) still work. **No prizes and no save changes at all** (P1's money, races and parts stay the same, and P2 saves nothing). Names are just "Player 1" / "Player 2". The winner screen has a big celebration plus 🔁 Race again.
+- Code: the "FRIEND RACE" block at the end of `src/p5.js` (`startFriendRace`, `updateFriend`, `renderFriend`, touch + keys); `render()` and `drawPlayer()` now accept a player with its own car. The setup screen is `SCREENS.friend` in `src/p6.js`.
+- Screenshots: `shots/friend-01-setup.png`, `friend-02-split-race.png`, `friend-03-split-portrait.png`, `friend-04-winner.png`.
+
+## Online Friend Race - up to 4 iPads (24 Oct 2026, built locally, NOT pushed - waiting for Jeff's go-ahead)
+- **Start:** Home → **🌐 Online Friend Race**.
+  - **Host:** types a secret code (6-20 letters or numbers; spaces and dashes are removed and it's made uppercase) or taps 🎲 **Make me a code** (like ROCKET42SPLASH). Too-short or easy codes (123456, AAAAAA, ABCDEF, 2811…) get a friendly "try a sillier one" message.
+  - **Friends:** type the code → 🤝 Join!
+- **Lobby:** big code on screen, 🚗 per racer (up to 4), and the host picks the map. **START** unlocks at 2+ racers and the race **starts by itself at 4**. A 5th player gets "That race is full (4 racers max)". If nobody starts it in **5 minutes**, the host's game deletes it ("Nobody started the race in 5 minutes…").
+- **Racing:** full screen. The other racers are see-through ghost cars, synced about 7 times a second (position, lane, speed, lap, finished). The place shows as "2nd of 4". It ends with a winner screen, and **the host deletes the race** when it's over (or when the host quits). No prizes, no save changes.
+- **How it talks to the database:** Firebase Realtime Database **REST API** (plain `fetch`, no SDK, no analytics, no login). Config is in `FIREBASE` (`src/p5.js`, from `firebase-config.json`). Data: `races/CODE = { created, players: { p1..p4 }, state: { phase, map } }`. Slots are claimed with ETag `if-match` (a transaction), so two friends can't grab the same slot. A host can't take a code that's under 5 minutes old.
+- **Safety rules:** codes are made by the host (random option), one race per code, deleted after the race or after 5 minutes. 4 players max. **No names, no chat, nothing personal**: only car shape, colour and position. Friendly offline message ("📡 No internet right now. Try the 👫 Friend Race on this iPad instead!").
+- **Needs from Jeff before pushing:** paste the DB rules that allow `players/p1`-`p4` (the real-DB smoke test used only p1 and p2).
+- **Known limits:** each iPad starts its 3-2-1 when it sees GO, so starts can be up to about 1 s apart. If two racers finish within the same sync tick, both iPads can say "You WON!" (seen in the smoke test with a dead-heat finish). The fix is to compare finish times sent with the data.
+- **Tests:** the suite uses an in-memory fake database (it never touches the real one): code rules, short or easy codes refused, a 2nd host refused, 4 players + the 5th blocked, auto-start at 4, START at 2, ghost sync, winner + race deleted, lobby timeout, offline message. `tests/online-smoke.js` is an optional manual test against the REAL database with 2 pages and a random code (it ran OK: join p2, both saw each other, the race node was deleted).
+- Screenshots: `shots/online-01-start-or-join.png`, `online-02-race-4-players.png`, `online-03-results.png`, `online-04-lobby-2-players.png`.
+
+**Next steps:** finish-time tiebreak, a synced start time, a "copy code" button, a host map preview, maybe item boxes in online races.

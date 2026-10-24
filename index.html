@@ -812,6 +812,7 @@ function findSeg(z) { const s = R.track.segs; return s[((Math.floor(z / SEG) % s
 const isBroken = kind => { const q = partById(S.equip[kind]); return !!(q && q.broken); };
 
 function update(dt) {
+  if (R.friend) return updateFriend(dt);
   const p = R.p, st = R.stats, len = R.track.len, space = R.map.id === 'space';
   R.t += dt;
   R.pops.forEach(q => q.t -= dt); R.pops = R.pops.filter(q => q.t > 0);
@@ -1083,7 +1084,8 @@ function render() {
   // road: near to far, remembering the highest point drawn so hills hide what's behind them
   let maxY = H, x = 0, dx = -base.curve * basePct;
   const camX = p.x * ROAD_W, camY = playerY + CAM_H;
-  for (let n = 0; n < DRAW; n++) {
+  const DRAWN = R.friend ? 110 : DRAW;   // split screen draws a bit less road so the iPad stays smooth
+  for (let n = 0; n < DRAWN; n++) {
     const s = segs[(base.i + n) % N], loop = s.i < base.i ? len : 0;
     project(s.p1, -x, s.y1, s.i * SEG + loop, camX, camY, camZw, horizon);
     project(s.p2, -x - dx, s.y2, (s.i + 1) * SEG + loop, camX, camY, camZw, horizon);
@@ -1113,7 +1115,7 @@ function render() {
   }
   // sprites far to near, so close things cover far things
   const spin = (R.frame >> 3) % 2;
-  for (let n = DRAW - 1; n > 0; n--) {
+  for (let n = DRAWN - 1; n > 0; n--) {
     const s = segs[(base.i + n) % N]; if (s.n !== n || s.p1.cz <= CAM_DEPTH) continue;
     const sc = s.p1.scale, sx = s.p1.x, sy = s.p1.y, u = sc * ROAD_W * W / 2;
     s.deco.forEach(d => drawSprite(objSprite(d.name, night), OBJ_W[d.name], sc, sx + d.x * u + Math.sign(d.x) * OBJ_W[d.name] * sc * W / 4, sy, s.clip));
@@ -1130,10 +1132,10 @@ function render() {
   }
   if (night) { g.fillStyle = 'rgba(0,0,30,0.35)'; g.fillRect(0, 0, W, H); }
   drawPlayer(horizon);
-  drawWeather(); drawDrag(); drawHUD();
+  drawWeather(); if (!R.friend) { drawDrag(); drawHUD(); }
 }
 function drawPlayer(horizon) {
-  const p = R.p, b = myBase(), scale = 0.72 / CAM_H, tire = partById(S.equip.tire), cw = CAR_W * scale * W / 2, cx = W / 2;
+  const p = R.p, b = p.base || myBase(), scale = 0.72 / CAM_H, tire = partById(S.equip.tire), cw = CAR_W * scale * W / 2, cx = W / 2;
   const ground = Math.min(H * 0.98, horizon + H / 2), lift = p.air * scale * H / 2;
   const carY = ground - lift - (p.speed > 100 && p.air <= 0 ? ((R.frame >> 2) % 2) * K : 0);
   if (p.air > 0) { g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(cx, ground, cw * 0.45, cw * 0.06, 0, 0, 7); g.fill(); }
@@ -1148,7 +1150,7 @@ function drawPlayer(horizon) {
   if (p.inPool && S.boat) {   // BOAT MODE: your car became a boat, with spray behind
     drawSprite(boatSprite(carPaint(b, true)), CAR_W, scale, cx, carY + cw * 0.04, 0, see);
     g.fillStyle = 'rgba(255,255,255,.8)'; for (let i = 0; i < 10; i++) { const ph = (R.t * 2.5 + i / 10) % 1; g.beginPath(); g.arc(cx + (i % 2 ? 1 : -1) * cw * (0.1 + ph * 0.45), carY - ph * cw * 0.2, cw * 0.04 * (1 - ph) + K, 0, 7); g.fill(); }
-  } else drawSprite(carSprite(b.shape, carPaint(b, true), tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
+  } else drawSprite(carSprite(b.shape, p.paint || carPaint(b, true), p.base ? '#2b2b2b' : tire ? TIER_COLOR[tire.tier] : '#2b2b2b'), CAR_W, scale, cx, carY, 0, see);
   if (R.splashT > 0) { const ph = 1 - R.splashT / 0.8; g.fillStyle = 'rgba(200,240,255,' + (1 - ph) + ')'; for (let i = 0; i < 18; i++) { const a = Math.PI + (i / 17) * Math.PI; g.beginPath(); g.arc(cx + Math.cos(a) * cw * (0.3 + ph * 0.7), carY - cw * 0.1 + Math.sin(a) * cw * (0.2 + ph * 0.6), cw * 0.05, 0, 7); g.fill(); } }   // big splash
   if (rk && rk.ability === 'sky') for (let i = 0; i < 14; i++) {   // sparkles
     const a = i * 2.4 + R.t * 3, rr = cw * (0.45 + 0.2 * Math.sin(R.t * 5 + i));
@@ -1225,7 +1227,7 @@ function frame(now) {
   if (R) {
     let left = real * timeScale;
     while (left > 1e-6 && R) { const step = Math.min(1 / 60, left); update(step); left -= step; }   // small fixed steps keep physics steady
-    if (R) { R.frame++; render(); }
+    if (R) { R.frame++; R.friend ? renderFriend() : render(); }
   }
   requestAnimationFrame(frame);
 }
@@ -1239,8 +1241,8 @@ function press(name, down) {
   }
   keys[name] = down;
 }
-addEventListener('keydown', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k && R) { e.preventDefault(); press(k, true); } });
-addEventListener('keyup', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k) press(k, false); });
+addEventListener('keydown', e => { if (friendKey(e, true)) return; const k = KEYMAP[e.key.toLowerCase()]; if (k && R) { e.preventDefault(); press(k, true); } });
+addEventListener('keyup', e => { if (friendKey(e, false)) return; const k = KEYMAP[e.key.toLowerCase()]; if (k) press(k, false); });
 const PAD = [ // name, label, centre x / y as a fraction of the screen, size as a fraction of screen height
   ['left', '◀', 0.08, 0.83, 0.22], ['right', '▶', 0.24, 0.83, 0.22], ['horn', '📯', 0.07, 0.6, 0.1], ['item', 'ITEM', 0.17, 0.6, 0.1],
   ['brake', 'BRAKE', 0.71, 0.9, 0.13], ['up', 'GO', 0.71, 0.72, 0.13], ['fly', 'FLY', 0.8, 0.62, 0.17], ['boost', 'BOOST', 0.91, 0.84, 0.2],
@@ -1257,7 +1259,7 @@ function layoutPad() {
   const w = innerWidth, h = innerHeight;
   document.querySelectorAll('#pad .tb').forEach(b => { const d = PAD.find(q => q[0] === b.dataset.k), s = d[4] * h;
     Object.assign(b.style, { width: s + 'px', height: s + 'px', left: (d[2] * w - s / 2) + 'px', top: (d[3] * h - s / 2) + 'px', fontSize: Math.max(14, s * 0.22) + 'px',
-      display: (dragMode() && DRIVE_BTNS.includes(d[0])) || (d[0] === 'up' && S.settings.autoGo) || (d[0] === 'rocket' && !myBase().rocket) ? 'none' : 'flex' });
+      display: (R && R.friend && d[0] !== 'quit') || (dragMode() && DRIVE_BTNS.includes(d[0])) || (d[0] === 'up' && S.settings.autoGo) || (d[0] === 'rocket' && !myBase().rocket) ? 'none' : 'flex' });
     if (d[0] === 'rocket') b.classList.toggle('used', !!(R && R.p.rocketUsed)); });
 }
 const DRIVE_BTNS = ['left', 'right', 'up', 'brake', 'fly', 'boost', 'rocket'];   // hidden in drag mode (horn, ITEM, PIT and quit stay)
@@ -1270,7 +1272,7 @@ cv.addEventListener('pointerdown', e => {   // tap the blood moon 100 times = 2.
     save();
   }
 });
-function quitRace() { R = null; endDrag(); Object.keys(keys).forEach(k => keys[k] = false); setPad(false); show('home'); }
+function quitRace() { if (R && R.online) leaveOnline(); R = null; endDrag(); FT.clear(); Object.keys(keys).forEach(k => keys[k] = false); setPad(false); show('home'); }
 
 /* ================= DRAG-TO-DRIVE (touch + mouse) =================
    Put a finger on your car and push it like a toy car:
@@ -1298,7 +1300,7 @@ function onCarTap() {
   if (rocketCar) GEST.tapTimer = setTimeout(fly, TUNE.doubleMs); else fly();   // rocket cars wait a moment to see if it's a double-tap
 }
 cv.addEventListener('pointerdown', e => {
-  if (!R || !dragMode() || GEST.id !== null) return;
+  if (!R || R.friend || !dragMode() || GEST.id !== null) return;
   const z = carZone(); if (e.clientY < z.top || Math.abs(e.clientX - z.cx) > z.halfW) return;
   e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (err) {}
   Object.assign(GEST, { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now() });
@@ -1331,6 +1333,247 @@ function drawDrag() {   // big friendly hint the first time, and a little ring +
   g.font = Math.round(64 * k) + 'px system-ui'; g.textAlign = 'center'; g.fillText('👆', hx + 10 * k, hy + 70 * k - bob);
 }
 
+/* ================= FRIEND RACE: 2 players on ONE iPad (offline, nothing online) =================
+   Split screen: landscape = left half Player 1, right half Player 2 (portrait = top / bottom).
+   Each half is the normal road view, drawn with its own camera. No bots: just the two of you.
+   Player 1 drives their saved car. Player 2 borrows a free car (nothing is bought or saved).
+   Touch: push anywhere on YOUR half (up = go, slide = steer, pull back = brake). Keyboard: P1 = WASD, P2 = arrow keys.
+   No pool (it would stop a friend without a boat), no prizes and no save changes: it's just for fun. */
+const FRIEND_CARS = ['zoom', 'beetle', 'truck', 'shark', 'police'];
+const FT = new Map();   // pointerId -> { pl, x0, y0 } : which finger belongs to which player
+function friendStats(b) { return { max: BASE_MAX * b.speed, accel: BASE_MAX / 4.5, handle: b.handle, grip: b.grip }; }
+function startFriendRace(mapId, p2car) {
+  const map = MAPS.find(m => m.id === mapId), track = buildTrack(map); track.pool = null;
+  const b1 = myBase(), b2 = CARS.find(c => c.id === p2car) || CARS[1];
+  const mk = (name, base, paint, x) => ({ name, base, paint, stats: friendStats(base), dist: SEG * 2, x, speed: 0, air: 0, vy: 0, lap: 1, coins: 0, finished: false, time: 0, place: 1, pops: [],
+    zoomT: 0, boostT: 0, ghostT: 0, shieldT: 0, lockT: 0, rocketT: 0, inPool: false, towing: false, ctl: { on: false, throttle: 0, steer: 0, brake: 0 } });
+  const p1 = mk('Player 1', b1, carPaint(b1, true), -0.45), p2 = mk('Player 2', b2, b2.body || '#00c2ff', 0.45);
+  p1.stats = Object.assign(friendStats(b1), { max: playerStats().max, handle: playerStats().handle, grip: playerStats().grip });   // P1's own parts count (read only)
+  R = { mode: 'friend', friend: true, map, track, night: false, blood: false, weather: 'sun', laps: DIFFICULTY.laps[map.id], phase: 'count', count: 3, t: 0, frame: 0, skyX: 0,
+    pops: [], bots: [], players: [p1, p2], fkeys: [{}, {}], finOrder: [], winner: null, doneT: 0, splashT: 0, stats: p1.stats, coins: 0 };
+  R.p = p1; R.minimapColors = []; FT.clear(); endDrag();
+  showUI(false); setPad(true); sound('go');
+}
+const fpop = (p, text, color) => { p.pops.push({ text, color: color || '#fff', t: 1.6 }); if (p.pops.length > 3) p.pops.shift(); };
+function updateFriend(dt) {
+  const len = R.track.len; R.t += dt; R.splashT = 0;
+  R.players.forEach(p => { p.pops.forEach(q => q.t -= dt); p.pops = p.pops.filter(q => q.t > 0); });
+  if (R.phase === 'count') { R.count -= dt; if (R.count <= 0) { R.phase = 'go'; R.t = 0; R.players.forEach(p => fpop(p, 'GO!', '#6cf08a')); } return; }
+  R.players.forEach((p, i) => {
+    const c = p.ctl, k = R.fkeys[i], st = p.stats, seg = findSeg(p.dist), speedPct = p.speed / st.max, top = st.max * (p.zoomT > 0 ? 1.3 : 1);
+    p.zoomT = Math.max(0, p.zoomT - dt);
+    const throttle = p.finished ? 0.6 : k.up ? 1 : c.on ? c.throttle : 0, brake = p.finished ? 0 : k.brake ? 1 : c.on ? c.brake : 0;
+    const steerIn = p.finished ? -p.x : clamp((k.right ? 1 : 0) - (k.left ? 1 : 0) + (c.on ? c.steer : 0), -1, 1);
+    const steer = dt * 2.2 * Math.min(1, speedPct + 0.2) * st.handle;
+    p.x += steer * steerIn - steer * speedPct * seg.curve * 0.3 / st.grip;
+    if (brake > 0) p.speed -= BASE_MAX * 1.5 * brake * dt;
+    else if (throttle > 0 && p.speed < top * throttle) p.speed = Math.min(top * throttle, p.speed + st.accel * dt);
+    else p.speed -= BASE_MAX / 5 * dt;                          // let go: coast and slow down
+    if (p.speed > top) p.speed = Math.max(top, p.speed - BASE_MAX * 0.6 * dt);
+    if (Math.abs(p.x) > 1.05 && p.speed > st.max / 3) p.speed -= BASE_MAX * 1.2 * dt;   // grass is slow
+    p.x = clamp(p.x, -2.2, 2.2); p.speed = Math.max(0, p.speed);
+    const before = p.dist; p.dist += p.speed * dt;
+    for (let z = Math.floor(before / SEG) + 1; z <= Math.floor(p.dist / SEG); z++) friendTouch(p, findSeg(z * SEG));
+    const lap = Math.floor(p.dist / len) + 1;
+    if (lap > p.lap && !p.finished) { p.lap = lap; if (lap <= R.laps) fpop(p, 'Lap ' + lap + '!', '#ffd23f'); }
+    if (!p.finished && p.dist >= R.laps * len) {
+      p.finished = true; p.time = R.t;
+      R.finOrder.push(p); const won = R.finOrder[0] === p;
+      if (!R.winner) { R.winner = R.finOrder[0]; R.doneT = R.online ? 10 : 6; }
+      sound('win'); fpop(p, won ? '🏆 YOU WIN!' : '🏁 Finished!', won ? '#ffd23f' : '#fff');
+    }
+  });
+  const all = R.players.concat(R.remotes || []), rank = q => q.finished && R.finOrder.includes(q) ? R.finOrder.indexOf(q) - 1e9 : -q.dist;
+  all.sort((u, v) => rank(u) - rank(v)); all.forEach((q, n) => q.place = n + 1);
+  const a = R.players[0]; R.skyX += findSeg(a.dist).curve * (a.speed / a.stats.max) * dt * 0.02;
+  if (R.online) { (R.remotes || []).forEach(q => { q.dist += (q.finished ? 0 : q.speed) * dt; }); if (R.winner) R.doneT -= dt; if (a.finished && (all.every(q => q.finished) || R.doneT <= 0)) showOnlineResults(); return; }
+  if (R.winner) { R.doneT -= dt; if (R.doneT <= 0 || R.players.every(q => q.finished)) showFriendResults(); }
+}
+function friendTouch(p, seg) {   // zoom pads, coins, cones and lucky blocks - all friendly, no damage, no money
+  if (seg.pad != null && Math.abs(p.x - seg.pad) < 0.3 && p.zoomT < 1.2) { p.zoomT = 1.5; fpop(p, 'ZOOM PAD!', '#5bd0ff'); }
+  seg.items.forEach(it => {
+    if (it.taken || Math.abs(p.x - it.x) > 0.175 + OBJ_W[it.type] / ROAD_W / 2) return;
+    it.taken = true;
+    if (it.type === 'coin') { p.coins++; sound('coin'); }
+    else if (it.type === 'block') { p.zoomT = 2; fpop(p, '⚡ ZOOM!', '#ffd23f'); }
+    else { p.speed *= 0.6; fpop(p, 'OOPS!', '#ff7a8a'); sound('oops'); }
+  });
+}
+function renderFriend() {
+  if (R.online) {   // online: your own full-screen view, friends shown as see-through ghost cars
+    const me = R.players[0]; R.p = me; R.bots = (R.remotes || []).map(q => ({ shape: 'ghost', paint: q.paint, tire: '#2b2b2b', dist: q.dist, x: q.x, gooT: 0, freezeT: 0 }));
+    render(); drawFriendHUD(me, 0); R.bots = []; return;
+  }
+  const W0 = W, H0 = H, land = W0 >= H0, P = R.players;
+  P.forEach((pl, i) => {
+    const o = P[1 - i], vw = land ? Math.floor(W0 / 2) : W0, vh = land ? H0 : Math.floor(H0 / 2);
+    g.save(); g.translate(land ? i * vw : 0, land ? 0 : i * vh); g.beginPath(); g.rect(0, 0, vw, vh); g.clip();
+    W = vw; H = vh; R.p = pl; R.bots = [{ shape: o.base.shape, paint: o.paint, tire: '#2b2b2b', dist: o.dist, x: o.x, gooT: 0, freezeT: 0 }];   // your friend is drawn like a racer
+    render(); drawFriendHUD(pl, i);
+    g.restore();
+  });
+  W = W0; H = H0; R.p = P[0]; R.bots = [];
+  g.fillStyle = '#ffffff'; if (land) g.fillRect(W / 2 - 3 * K, 0, 6 * K, H); else g.fillRect(0, H / 2 - 3 * K, W, 6 * K);   // the line between the two screens
+}
+function drawFriendHUD(p, i) {
+  const k = K, col = i ? '#7fe6ff' : '#ffd23f', L = 16 * k;
+  txt((i ? '🔵 ' : '🟡 ') + p.name, L, 40 * k, 28, col);
+  txt(ord(p.place) + (R.online ? ' of ' + (1 + (R.remotes || []).length) : '') + '   Lap ' + Math.min(p.lap, R.laps) + '/' + R.laps + '   🪙 ' + p.coins, L, 72 * k, 20);
+  txt(Math.round(p.speed / BASE_MAX * 160) + ' km/h', W / 2, H - 20 * k, 22, '#fff', 'center');
+  if (R.phase === 'count') txt(String(Math.ceil(R.count)), W / 2, H * 0.35, 90, '#ffd23f', 'center');
+  if (R.phase === 'count' || (R.t < 3 && !p.ctl.on)) txt(R.online ? 'Push to go! (or arrow keys)' : i ? 'Push here! (or arrow keys)' : 'Push here! (or W A S D)', W / 2, H * 0.55, 24, '#fff', 'center');
+  p.pops.forEach((q, j) => txt(q.text, W / 2, H * 0.26 + j * 40 * k - (1.6 - q.t) * 30 * k, 30, q.color, 'center'));
+}
+function friendHalf(e) { if (R && R.online) return 0; return innerWidth >= innerHeight ? (e.clientX < innerWidth / 2 ? 0 : 1) : (e.clientY < innerHeight / 2 ? 0 : 1); }
+function friendAim(t, e) {
+  const u = Math.min(innerWidth, innerHeight), c = R.players[t.pl].ctl, dy = t.y0 - e.clientY, dx = e.clientX - t.x0;
+  c.throttle = clamp(dy / (u * TUNE.fullPush), 0, 1); c.brake = clamp(-dy / (u * TUNE.fullBrake), 0, 1); c.steer = clamp(dx / (u * TUNE.fullSteer), -1, 1);
+}
+cv.addEventListener('pointerdown', e => {   // each finger belongs to the half it started on (multi-touch: both players at once)
+  if (!R || !R.friend) return; e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  const t = { pl: friendHalf(e), x0: e.clientX, y0: e.clientY };
+  FT.forEach((v, id) => { if (v.pl === t.pl) FT.delete(id); });   // one finger per player: the newest one wins
+  FT.set(e.pointerId, t); R.players[t.pl].ctl.on = true; friendAim(t, e);
+});
+cv.addEventListener('pointermove', e => { const t = FT.get(e.pointerId); if (!t || !R || !R.friend) return; e.preventDefault(); friendAim(t, e); });
+const friendUp = e => { const t = FT.get(e.pointerId); if (!t) return; FT.delete(e.pointerId); if (R && R.friend) Object.assign(R.players[t.pl].ctl, { on: false, throttle: 0, steer: 0, brake: 0 }); };
+cv.addEventListener('pointerup', friendUp); cv.addEventListener('pointercancel', friendUp);
+const FRIEND_KEYS = [{ w: 'up', a: 'left', d: 'right', s: 'brake' }, { arrowup: 'up', arrowleft: 'left', arrowright: 'right', arrowdown: 'brake' }];
+function friendKey(e, down) {   // P1 = WASD, P2 = arrow keys. Returns true if the key was used.
+  if (!R || !R.friend) return false;
+  const key = e.key.toLowerCase(); let used = false;
+  FRIEND_KEYS.forEach((m, i) => { if (m[key]) { R.fkeys[R.online ? 0 : i][m[key]] = down; used = true; } });   // online: WASD and arrows both drive you
+  if (used) e.preventDefault(); return used;
+}
+function showFriendResults() {
+  const r = R; R = null; FT.clear(); endDrag(); setPad(false); Object.keys(keys).forEach(k => keys[k] = false);
+  const [a, b] = r.players, win = a.place === 1 ? a : b, lose = win === a ? b : a;
+  const line = p => '<div class="big">' + (p === win ? '🥇 ' : '🥈 ') + p.name + '</div><div class="muted">' + p.base.name + ' · ' + (p.finished ? p.time.toFixed(1) + 's' : 'still racing') + ' · 🪙 ' + p.coins + '</div>';
+  resultsHTML = '<h1 style="font-size:56px">🎉 ' + win.name + ' WINS! 🎉</h1><div style="text-align:center;font-size:54px">🏆🎈🎊⭐🎊🎈🏆</div>' +
+    '<div class="card" style="margin:auto;max-width:460px;text-align:center">' + line(win) + '<br>' + line(lose) + '</div>' +
+    '<p style="text-align:center">Great racing, both of you! ' + r.map.emoji + ' ' + r.map.name + '</p>' +
+    center(btn('🔁 Race again!', 'friendGo', '', 'green') + btn('🏠 Home', 'go', 'home', 'blue'));
+  lastFriend = { map: r.map.id, p2: b.base.id }; show('results'); sound('win');
+}
+let lastFriend = null;
+
+/* ================= ONLINE FRIEND RACE (up to 4 players, each on their own iPad) =================
+   Uses the Firebase Realtime Database REST API (plain fetch, no SDK, no analytics, no accounts).
+   SAFETY: no names, no chat, nothing personal is sent - only a car shape, a colour and where your car is.
+   A race lives at races/CODE for one race only:  { created, players: { p1..p4: car data }, state: { phase, map } }
+   HOST picks a code (or "Make me a code") and claims p1. FRIENDS type the code and claim the first free slot p2-p4
+   (safe against two people grabbing the same slot: ETag "if-match" = a transaction). A 5th player gets "That race is full".
+   The host can START once 2+ are in; it starts by itself at 4. The host deletes the race when it's over,
+   or when nobody started it within 5 minutes. Cars sync about 7 times a second. */
+const FIREBASE = {"apiKey":"AIzaSyDy6Xevl2yQhN5I2CZfcgyqHPudjHu6G2A","authDomain":"race-to-win-friends.firebaseapp.com","databaseURL":"https://race-to-win-friends-default-rtdb.asia-southeast1.firebasedatabase.app","projectId":"race-to-win-friends","storageBucket":"race-to-win-friends.firebasestorage.app","messagingSenderId":"358604375437","appId":"1:358604375437:web:7aa0fef51ef02f1b9069c4"};
+const NET = {   // tiny REST helper; tests swap these functions for an in-memory fake (no real database in the test suite)
+  url: p => FIREBASE.databaseURL + '/' + p + '.json',
+  async get(p) { const r = await fetch(NET.url(p), { headers: { 'X-Firebase-ETag': 'true' }, cache: 'no-store' }); if (!r.ok) throw new Error('net ' + r.status); return { val: await r.json(), etag: r.headers.get('ETag') }; },
+  async put(p, v, etag) { const h = { 'Content-Type': 'application/json' }; if (etag) h['if-match'] = etag;
+    const r = await fetch(NET.url(p), { method: 'PUT', headers: h, body: JSON.stringify(v) }); if (r.status === 412) return false; if (!r.ok) throw new Error('net ' + r.status); return true; },
+  async del(p) { const r = await fetch(NET.url(p), { method: 'DELETE' }); return r.ok; },
+};
+const ONLINE = { lobbyMs: 5 * 60 * 1000, syncMs: 150, slots: ['p1', 'p2', 'p3', 'p4'] };
+const ONL = { code: null, slot: null, host: false, node: null, lobbyTimer: 0, syncTimer: 0, busy: false, msg: '' };
+const normCode = s => String(s || '').toUpperCase().replace(/[\s-]+/g, '');
+function codeProblem(c) {   // returns a friendly reason, or '' if the code is OK
+  if (!/^[A-Z0-9]*$/.test(c)) return 'Only letters and numbers, please!';
+  if (c.length < 6) return 'Make your code at least 6 letters or numbers long.';
+  if (c.length > 20) return 'That code is too long - 20 at most.';
+  const easy = /^(.)\1+$/.test(c) || [1, -1].some(d => [...c].every((ch, i) => !i || ch.charCodeAt(0) - c.charCodeAt(i - 1) === d)) || /^(PASSWORD|QWERTY|ABC123|123ABC|RACE2WIN|RACETOWIN)/.test(c);
+  return easy ? "That code is too easy to guess - try a sillier one, or tap 'Make me a code'!" : '';
+}
+const CODE_WORDS = ['ROCKET', 'SPLASH', 'TURBO', 'COMET', 'NOODLE', 'DRAGON', 'UNICORN', 'BUBBLE', 'ZOOMY', 'SHARK', 'PLANET', 'WOBBLE'];
+function makeCode() { const w = () => pick(CODE_WORDS); let a = w(), b = w(); while (b === a) b = w(); return a + (10 + Math.floor(Math.random() * 90)) + b; }
+const offlineMsg = () => popup('📡 No internet right now. Try the 👫 Friend Race on this iPad instead!');
+const myCarData = () => { const b = myBase(); return { car: b.shape, c: carPaint(b, true), j: Date.now(), d: 0, x: 0, s: 0, lap: 1, fin: 0 }; };
+async function hostRace(raw) {   // returns '' on success, or a friendly message
+  const code = normCode(raw), bad = codeProblem(code); if (bad) return bad;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && !NET.fake) return 'offline';
+  try {
+    const old = await NET.get('races/' + code);
+    if (old.val && Date.now() - (old.val.created || 0) < ONLINE.lobbyMs) return 'That code is being used right now. Try another one!';
+    const ok = await NET.put('races/' + code, { created: Date.now(), players: { p1: myCarData() }, state: { phase: 'lobby', map: 'grass' } }, old.etag);
+    if (!ok) return 'Somebody just took that code. Try another one!';
+  } catch (e) { return 'offline'; }
+  Object.assign(ONL, { code, slot: 'p1', host: true, node: null }); startLobby(); return '';
+}
+async function claimSlot(code) {   // first free slot p2-p4, claimed with if-match so two friends never get the same one
+  const race = await NET.get('races/' + code);
+  if (!race.val || !race.val.created) return 'none';
+  if (!race.val.state || race.val.state.phase !== 'lobby') return 'started';
+  for (const slot of ONLINE.slots.slice(1)) {
+    const cur = await NET.get('races/' + code + '/players/' + slot);
+    if (cur.val) continue;
+    if (await NET.put('races/' + code + '/players/' + slot, myCarData(), cur.etag)) return slot;
+  }
+  return 'full';
+}
+async function joinRace(raw) {
+  const code = normCode(raw); if (code.length < 6) return 'Type the code your friend made (6 or more letters or numbers).';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && !NET.fake) return 'offline';
+  let slot; try { slot = await claimSlot(code); } catch (e) { return 'offline'; }
+  if (slot === 'none') return 'No race with that code. Check it with your friend!';
+  if (slot === 'started') return 'That race has already started. Ask for a new code!';
+  if (slot === 'full') return 'That race is full (4 racers max).';
+  Object.assign(ONL, { code, slot, host: false, node: null }); startLobby(); return '';
+}
+function stopOnline() { clearInterval(ONL.lobbyTimer); clearInterval(ONL.syncTimer); ONL.lobbyTimer = ONL.syncTimer = 0; }
+function leaveOnline() {   // host leaving removes the whole race; a friend leaving the lobby frees their slot
+  const code = ONL.code; stopOnline();
+  if (code && ONL.host) NET.del('races/' + code).catch(() => {}); else if (code && ONL.slot && !R) NET.del('races/' + code + '/players/' + ONL.slot).catch(() => {}); Object.assign(ONL, { code: null, slot: null, host: false, node: null }); }
+function startLobby() { stopOnline(); ONL.lobbyTimer = setInterval(lobbyPoll, 1000); show('lobby'); lobbyPoll(); }
+const playerCount = node => ONLINE.slots.filter(s => node && node.players && node.players[s]).length;
+async function lobbyPoll() {
+  if (!ONL.code || ONL.busy) return; ONL.busy = true;
+  try {
+    const node = (await NET.get('races/' + ONL.code)).val; ONL.node = node;
+    if (!node) { const host = ONL.host; leaveOnline(); popup(host ? 'The race was closed.' : 'That race has ended. Ask your friend for a new code!'); show('online'); return; }
+    if (ONL.host && node.state.phase === 'lobby' && Date.now() - node.created > ONLINE.lobbyMs) { leaveOnline(); popup('⏰ Nobody started the race in 5 minutes, so it was closed. Make a new one!'); show('online'); return; }
+    if (node.state.phase === 'go') { beginOnlineRace(node.state.map); return; }
+    if (ONL.host && playerCount(node) >= 4) { await onlineStart(); return; }   // 4 racers: start by itself
+    if (screen === 'lobby' && !R) show('lobby');
+  } catch (e) { /* network blip: try again next second */ } finally { ONL.busy = false; }
+}
+async function onlineStart() {   // host only, 2+ racers
+  if (!ONL.host || !ONL.node || playerCount(ONL.node) < 2) return;
+  const map = ONL.node.state.map || 'grass';
+  try { await NET.put('races/' + ONL.code + '/state', { phase: 'go', map }); } catch (e) { offlineMsg(); return; }
+  beginOnlineRace(map);
+}
+function beginOnlineRace(mapId) {
+  clearInterval(ONL.lobbyTimer); ONL.lobbyTimer = 0;
+  startFriendRace(mapId, 'zoom');
+  R.online = true; R.players = [R.players[0]]; R.players[0].name = 'You'; R.remotes = []; R.p = R.players[0];
+  ONL.syncTimer = setInterval(onlineSync, ONLINE.syncMs);
+}
+async function onlineSync() {   // send my car, read everybody else's (about 7 times a second)
+  if (!R || !R.online || ONL.syncing) return; ONL.syncing = true;
+  const me = R.players[0], base = 'races/' + ONL.code + '/players/';
+  try {
+    await NET.put(base + ONL.slot, { car: me.base.shape, c: me.paint, j: 1, d: Math.round(me.dist), x: +me.x.toFixed(3), s: Math.round(me.speed), lap: me.lap, fin: me.finished ? 1 : 0 });
+    const ps = (await NET.get('races/' + ONL.code + '/players')).val;
+    if (!R || !R.online) return;
+    if (!ps) { if (!R.hostLeft) { R.hostLeft = true; fpop(me, 'Your friends left - finish the race!', '#fff'); } return; }
+    ONLINE.slots.filter(s => s !== ONL.slot && ps[s]).forEach(s => {
+      const v = ps[s]; let q = R.remotes.find(r => r.slot === s);
+      if (!q) { q = { slot: s, name: 'Racer ' + s.slice(1), finished: false, place: 1 }; R.remotes.push(q); }
+      Object.assign(q, { dist: v.d || 0, x: v.x || 0, speed: v.s || 0, lap: v.lap || 1, paint: /^#[0-9a-f]{3,8}$/i.test(v.c) ? v.c : '#cfe8ff' });
+      if (v.fin && !q.finished) { q.finished = true; R.finOrder.push(q); if (!R.winner) { R.winner = q; R.doneT = 10; } }
+    });
+  } catch (e) { /* blip */ } finally { ONL.syncing = false; }
+}
+function showOnlineResults() {
+  const r = R; R = null; stopOnline(); FT.clear(); endDrag(); setPad(false); Object.keys(keys).forEach(k => keys[k] = false);
+  const me = r.players[0], all = [me].concat(r.remotes).sort((a, b) => a.place - b.place);
+  if (ONL.host) NET.del('races/' + ONL.code).catch(() => {});   // the race is over: the host removes it from the database
+  Object.assign(ONL, { code: null, slot: null, host: false, node: null });
+  resultsHTML = '<h1 style="font-size:52px">' + (me.place === 1 ? '🎉 You WON! 🎉' : '🏁 You came ' + ord(me.place) + '!') + '</h1><div style="text-align:center;font-size:50px">🏆🎈🎊⭐🎊🎈🏆</div>' +
+    '<div class="card" style="margin:auto;max-width:420px;text-align:center">' + all.map(q => '<div class="big">' + ['🥇', '🥈', '🥉', '🏅'][q.place - 1] + ' ' + (q === me ? 'You' : q.name) + '</div>').join('') + '</div>' +
+    '<p style="text-align:center">Great racing, everybody! 👋</p>' + center(btn('🌐 Race online again', 'go', 'online', 'green') + btn('🏠 Home', 'go', 'home', 'blue'));
+  show('results'); sound('win');
+}
+
 /* =====================================================================
    MENUS (plain HTML). Buttons carry data-act="..." and ACT handles them.
    ===================================================================== */
@@ -1343,6 +1586,7 @@ function show(name) { screen = name; showUI(true); $('ui').innerHTML = '<div cla
 const dailyReady = () => S.lastDaily !== today();
 const prizeMult = m => ECONOMY.mapBonus[m.id] * (1 + ECONOMY.lapBonus * Math.max(0, DIFFICULTY.laps[m.id] - 2));
 const preview = (w, h, shape) => '<canvas class="prev"' + (shape ? ' data-shape="' + shape + '"' : '') + ' width="' + w + '" height="' + h + '" style="width:' + w + 'px;height:' + h + 'px;image-rendering:pixelated"></canvas>';
+const friendSetup = { map: 'grass', p2: 'zoom' };
 const SCREENS = {
   home() {
     const d = S.settings, opt = (label, act, vals, cur) => '<div style="margin-top:8px">' + label + '</div>' + vals.map(v => btn(cap(v), act, v, 'small ' + (cur === v ? 'green' : 'grey'))).join('');
@@ -1351,6 +1595,7 @@ const SCREENS = {
       '<div class="card" style="text-align:center;max-width:420px">' +
       btn('🏎️ RACE!', 'raceMenu', '', 'green', !S.passedTest) + (S.passedTest ? '' : '<div class="muted">Beat the practice bot to unlock races!</div>') +
       btn('🚤 Pool Noodle Course', 'noodle', '', S.boat ? 'blue' : 'grey') + (S.boat ? '' : '<div class="muted">🔒 Buy the Splash Boat in the Garage first!</div>') +
+      btn('👫 Friend Race', 'go', 'friend', 'green') + btn('🌐 Online Friend Race', 'go', 'online', 'blue') +
       btn('🤖 Practice test', 'practice', '', 'blue') + btn('🔧 Garage', 'go', 'garage') +
       btn('🎡 Daily wheel' + (dailyReady() ? ' ⭐' : ''), 'go', 'wheel', dailyReady() ? '' : 'grey') + btn('🏆 Trophies', 'go', 'trophies') + '</div>' +
       '<div class="card"><h2>⚙️ Options</h2>' + opt('Difficulty:', 'diff', ['easy', 'normal', 'hard'], d.diff) +
@@ -1386,6 +1631,30 @@ const SCREENS = {
       '<div class="muted">Pays $' + ECONOMY.trophyWeekly[t.tier] + ' a week</div>' + btn('Sell $' + ECONOMY.trophySell[t.tier].toLocaleString(), 'sellTrophy', i, 'small red') + '</div>').join('');
     return '<h1>🏆 Trophy Room</h1>' + (hasRainbow() ? '<h2 style="text-align:center">🌈 RAINBOW TROPHY! Luckier spins!</h2>' : '') +
       '<p style="text-align:center">Every win adds a trophy coloured by your tires. Trophies pay you every week!</p><div class="row">' + (list || '<p>No trophies yet. Win a race!</p>') + '</div>' + center(btn('⬅ Back', 'go', 'home', 'blue'));
+  },
+  friend() {   // 2 players on this iPad. Nothing online.
+    const f = friendSetup;
+    return '<h1>👫 Friend Race</h1><p style="text-align:center">Two players on this iPad! Player 1 drives on the left, Player 2 on the right.</p>' +
+      '<h2 style="text-align:center">1. Pick a map</h2><div class="row">' + MAPS.map(m => '<div class="card ' + (f.map === m.id ? 'on' : '') + '" style="text-align:center"><div style="font-size:44px">' + m.emoji + '</div><div class="big">' + m.name + '</div>' + btn(f.map === m.id ? '✅ Picked' : 'Pick', 'friendMap', m.id, 'small') + '</div>').join('') + '</div>' +
+      '<h2 style="text-align:center">2. Player 2, pick a car (free to borrow!)</h2><div class="row">' + FRIEND_CARS.map(id => { const c = CARS.find(x => x.id === id); return '<div class="card ' + (f.p2 === id ? 'on' : '') + '" style="text-align:center">' + preview(160, 80, id) + '<div class="big" style="font-size:19px">' + c.name + '</div>' + btn(f.p2 === id ? '✅ Picked' : 'Pick', 'friendCar', id, 'small') + '</div>'; }).join('') + '</div>' +
+      center('<p>🟡 Player 1 drives your ' + myBase().name + '. Push on your half of the screen to go!</p>' + btn('🏁 GO!', 'friendGo', '', 'green') + btn('⬅ Back', 'go', 'home', 'grey'));
+  },
+  online() {   // up to 4 friends, each on their own iPad. No names, no chat.
+    const inp = id => '<input id="' + id + '" maxlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-size:28px;padding:10px;border-radius:14px;width:92%;text-align:center;text-transform:uppercase">';
+    return '<h1>🌐 Online Friend Race</h1><p style="text-align:center">Race up to 3 friends on their own iPads! Only share your code with friends you know. No names, no chat - just racing.</p><div class="row">' +
+      '<div class="card" style="text-align:center;max-width:440px"><h2>🏁 Start a race</h2><p>Type a secret code (6-20 letters or numbers), or let the game make one.</p>' + inp('hostCode') + '<br>' +
+        btn('🎲 Make me a code', 'makeCode', '', 'blue') + btn('🏁 Start my race', 'hostGo', '', 'green') + '</div>' +
+      '<div class="card" style="text-align:center;max-width:440px"><h2>🤝 Join a friend</h2><p>Type the code your friend tells you.</p>' + inp('joinCode') + '<br>' + btn('🤝 Join!', 'joinGo', '', 'green') + '</div></div>' +
+      '<p id="onlineMsg" style="text-align:center;font-size:22px;color:#ffd23f">' + (ONL.msg || '') + '</p>' + center(btn('⬅ Back', 'go', 'home', 'grey'));
+  },
+  lobby() {
+    const n = ONL.node ? playerCount(ONL.node) : 1, map = ONL.node && ONL.node.state ? ONL.node.state.map : 'grass';
+    const left = ONL.node ? Math.max(0, Math.ceil((ONLINE.lobbyMs - (Date.now() - ONL.node.created)) / 60000)) : 5;
+    return '<h1>🌐 Waiting for racers</h1><div class="card" style="margin:auto;max-width:620px;text-align:center"><p>Race code:</p><div style="font-size:44px;font-weight:900;letter-spacing:3px;color:#ffd23f">' + ONL.code + '</div>' +
+      '<p style="font-size:40px">' + '🚗'.repeat(n) + '<span style="opacity:.3">' + '🚗'.repeat(4 - n) + '</span></p><p>' + n + ' of 4 racers are in' + (ONL.host ? '' : ' · you are Racer ' + ONL.slot.slice(1)) + '</p>' +
+      (ONL.host ? '<p>Map:</p>' + MAPS.map(m => btn(m.emoji + ' ' + m.name, 'onlineMap', m.id, 'small ' + (map === m.id ? 'green' : 'grey'))).join('') + '<br><br>' +
+        btn('🏁 START!', 'onlineStart', '', 'green', n < 2) + (n < 2 ? '<p class="muted">Tell a friend the code! START works when 2 or more are in. It starts by itself at 4.</p>' : '') + '<p class="muted">The race closes in ' + left + ' min if nobody starts it.</p>'
+        : '<p>Waiting for the host to press START... 🙂</p>') + '</div>' + center(btn('⬅ Leave', 'onlineLeave', '', 'grey'));
   },
   results: () => resultsHTML,
 };
@@ -1477,6 +1746,15 @@ const ACT = {
   buyPatch: () => { if (spend(ECONOMY.patchPrice)) { S.patches++; save(); show('garage'); } },
   paint: c => { if (S.paint === c) return; if (S.freePaints > 0) S.freePaints--; else if (!spend(ECONOMY.paintPrice)) return; S.paint = c; save(); show('garage'); },
   noodle: () => { if (!S.boat) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } startRace({ mode: 'race', noodle: true, weather: 'sun' }); },
+  makeCode: () => { const el = $('hostCode'); if (el) el.value = makeCode(); },
+  hostGo: async () => { const m = await hostRace(($('hostCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
+  joinGo: async () => { const m = await joinRace(($('joinCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
+  onlineStart: () => onlineStart(),
+  onlineMap: async id => { if (!ONL.host || !MAPS.some(m => m.id === id)) return; try { await NET.put('races/' + ONL.code + '/state', { phase: 'lobby', map: id }); } catch (e) {} lobbyPoll(); },
+  onlineLeave: () => { leaveOnline(); show('online'); },
+  friendMap: id => { friendSetup.map = id; show('friend'); },
+  friendCar: id => { if (FRIEND_CARS.includes(id)) { friendSetup.p2 = id; show('friend'); } },
+  friendGo: () => { if (lastFriend && screen === 'results') Object.assign(friendSetup, { map: lastFriend.map, p2: lastFriend.p2 }); startFriendRace(friendSetup.map, friendSetup.p2); },
   practice: () => startRace({ mode: 'practice', map: 'grass' }),
   raceMenu: () => { if (!S.passedTest) return; raceSetup = { map: 'grass', weather: pick(WEATHER).id }; show('raceMenu'); },
   pickMap: id => { raceSetup.map = id; raceSetup.grid = null; show('raceMenu'); },
@@ -1564,6 +1842,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, NOODLE_MAP };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline };   // for testing only
 </script>
 </body></html>
