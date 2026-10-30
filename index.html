@@ -1538,8 +1538,8 @@ const NET = {   // tiny REST helper; tests swap these functions for an in-memory
     const r = await fetch(NET.url(p), { method: 'PUT', headers: h, body: JSON.stringify(v) }); if (r.status === 412) return false; if (!r.ok) throw new Error('net ' + r.status); return true; },
   async del(p) { const r = await fetch(NET.url(p), { method: 'DELETE' }); return r.ok; },
 };
-const ONLINE = { lobbyMs: 5 * 60 * 1000, syncMs: 150, slots: ['p1', 'p2', 'p3', 'p4'] };
-const ONL = { code: null, slot: null, host: false, node: null, lobbyTimer: 0, syncTimer: 0, busy: false, msg: '' };
+const ONLINE = { lobbyMs: 10 * 60 * 1000, syncMs: 150, slots: ['p1', 'p2', 'p3', 'p4'] };
+const ONL = { code: null, slot: null, host: false, node: null, round: -1, lobbyTimer: 0, syncTimer: 0, busy: false, msg: '' };
 const normCode = s => String(s || '').toUpperCase().replace(/[\s-]+/g, '');
 function codeProblem(c) {   // returns a friendly reason, or '' if the code is OK
   if (!/^[A-Z0-9]*$/.test(c)) return 'Only letters and numbers, please!';
@@ -1557,11 +1557,11 @@ async function hostRace(raw) {   // returns '' on success, or a friendly message
   if (typeof navigator !== 'undefined' && navigator.onLine === false && !NET.fake) return 'offline';
   try {
     const old = await NET.get('races/' + code);
-    if (old.val && Date.now() - (old.val.created || 0) < ONLINE.lobbyMs) return 'That code is being used right now. Try another one!';
-    const ok = await NET.put('races/' + code, { created: Date.now(), players: { p1: Object.assign(myCarData(), { first: 1 }) }, state: { phase: 'lobby', map: 'grass' } }, old.etag);
+    if (old.val && Date.now() - lastActive(old.val) < ONLINE.lobbyMs) return 'That code is being used right now. Try another one!';
+    const now = Date.now(), ok = await NET.put('races/' + code, { created: now, players: { p1: Object.assign(myCarData(), { first: 1 }) }, state: { phase: 'lobby', map: 'grass', at: now } }, old.etag);
     if (!ok) return 'Somebody just took that code. Try another one!';
   } catch (e) { return 'offline'; }
-  Object.assign(ONL, { code, slot: 'p1', host: true, node: null }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
+  Object.assign(ONL, { code, slot: 'p1', host: true, node: null, round: -1 }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
 }
 async function claimSlot(code) {   // first free slot p2-p4, claimed with if-match so two friends never get the same one
   const race = await NET.get('races/' + code);
@@ -1579,50 +1579,57 @@ async function joinRace(raw) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false && !NET.fake) return 'offline';
   let slot; try { slot = await claimSlot(code); } catch (e) { return 'offline'; }
   if (slot === 'none') return 'No race with that code. Check it with your friend!';
-  if (slot === 'started') return 'That race has already started. Ask for a new code!';
+  if (slot === 'started') return 'They are racing right now! Try again when the race is over. 🏁';
   if (slot === 'full') return 'That race is full (4 racers max).';
-  Object.assign(ONL, { code, slot, host: false, node: null }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
+  Object.assign(ONL, { code, slot, host: false, node: null, round: -1 }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
 }
 function stopOnline() { clearInterval(ONL.lobbyTimer); clearInterval(ONL.syncTimer); ONL.lobbyTimer = ONL.syncTimer = 0; }
-function leaveOnline() {   // host leaving removes the whole race; a friend leaving the lobby frees their slot
-  const code = ONL.code; stopOnline();
-  if (code && ONL.host) NET.del('races/' + code).catch(() => {}); else if (code && ONL.slot && !R) NET.del('races/' + code + '/players/' + ONL.slot).catch(() => {}); Object.assign(ONL, { code: null, slot: null, host: false, node: null }); }
+/* PERSISTENT LOBBY (30 Oct): one code, many races. After a race everyone goes back to the same lobby (same slots, badge kept).
+   The host's Race again starts the next round: state = { phase:'go', map, tmode, round, at } (share + names are wiped because state is replaced).
+   The lobby closes (race node deleted) when the host leaves, or after 10 minutes with no race started (state.at). A friend leaving frees their slot. */
+const lastActive = node => (node.state && node.state.at) || node.created || 0;
+function leaveOnline() {   // host leaving removes the whole lobby; a friend leaving frees their slot
+  const code = ONL.code; stopOnline(); clearInterval(SHARE.timer); SHARE.code = null;
+  if (code && ONL.host) NET.del('races/' + code).catch(() => {}); else if (code && ONL.slot) NET.del('races/' + code + '/players/' + ONL.slot).catch(() => {}); Object.assign(ONL, { code: null, slot: null, host: false, node: null, round: -1 }); }
+function backToLobby() { if (!ONL.code) { popup('That race has closed. Make or join a new one!'); show('online'); return; } startLobby(); }
 function startLobby() { stopOnline(); ONL.lobbyTimer = setInterval(lobbyPoll, 1000); show('lobby'); lobbyPoll(); }
 const playerCount = node => ONLINE.slots.filter(s => node && node.players && node.players[s]).length;
 async function lobbyPoll() {
   if (!ONL.code || ONL.busy) return; ONL.busy = true;
   try {
     const node = (await NET.get('races/' + ONL.code)).val; ONL.node = node;
-    if (!node) { const host = ONL.host; leaveOnline(); popup(host ? 'The race was closed.' : 'That race has ended. Ask your friend for a new code!'); show('online'); return; }
-    if (ONL.host && node.state.phase === 'lobby' && Date.now() - node.created > ONLINE.lobbyMs) { leaveOnline(); popup('⏰ Nobody started the race in 5 minutes, so it was closed. Make a new one!'); show('online'); return; }
-    if (node.state.phase === 'go') { beginOnlineRace(node.state.map, node.state.tmode); return; }
-    if (ONL.host && playerCount(node) >= 4) { if (screen !== 'trackPick') pickTrack(m => onlineStart(m), 'lobby'); return; }   // 4 racers: host picks the track mode, then it starts
+    const inLobby = screen === 'lobby' || screen === 'nameEntry' || screen === 'trackPick';
+    if (!node) { const host = ONL.host; leaveOnline(); popup(host ? 'The race was closed.' : 'The race lobby has closed. Ask your friend for a new code!'); if (inLobby) show('online'); return; }
+    if (ONL.host && node.state.phase === 'lobby' && Date.now() - lastActive(node) > ONLINE.lobbyMs) { leaveOnline(); popup('⏰ Nobody started a race in 10 minutes, so the lobby was closed. Make a new one!'); if (inLobby || screen === 'results') show('online'); return; }
+    if (node.state.phase === 'go' && (node.state.round || 0) > ONL.round && !R) { beginOnlineRace(node.state.map, node.state.tmode, node.state.round || 0); return; }   // joiners follow the host into each new round
+    if (ONL.host && ONL.round < 0 && screen === 'lobby' && playerCount(node) >= 4) { if (screen !== 'trackPick') pickTrack(m => onlineStart(m), 'lobby'); return; }   // 4 racers: host picks the track mode, then it starts
     if (screen === 'lobby' && !R) show('lobby');
   } catch (e) { /* network blip: try again next second */ } finally { ONL.busy = false; }
 }
-const onlineState = (map, tmode) => ({ phase: 'go', map, tmode: tmodeOk(tmode) });   // the track mode rides INSIDE state (rules allow no new top-level child)
+const onlineState = (map, tmode, round) => ({ phase: 'go', map, tmode: tmodeOk(tmode), round: round || 0, at: Date.now() });   // the track mode rides INSIDE state (rules allow no new top-level child)
 async function onlineStart(tmode) {   // host only, 2+ racers; tmode = what the host picked (defaults to their last pick)
   if (!ONL.host || !ONL.node || playerCount(ONL.node) < 2 || ONL.starting) return;
-  const map = ONL.node.state.map || 'grass', st = onlineState(map, tmode || S.trackMode);
+  const map = ONL.node.state.map || 'grass', st = onlineState(map, tmode || S.trackMode, Math.max(ONL.round, ONL.node.state.round == null ? -1 : ONL.node.state.round) + 1);
   ONL.starting = true;
   try { await NET.put('races/' + ONL.code + '/state', st); } catch (e) { ONL.starting = false; offlineMsg(); return; }
-  ONL.starting = false; beginOnlineRace(map, st.tmode);
+  ONL.starting = false; beginOnlineRace(map, st.tmode, st.round);
 }
-function beginOnlineRace(mapId, tmode) {
-  clearInterval(ONL.lobbyTimer); ONL.lobbyTimer = 0;
+function beginOnlineRace(mapId, tmode, round) {
+  clearInterval(ONL.lobbyTimer); ONL.lobbyTimer = 0; clearInterval(SHARE.timer); ONL.round = round || 0; PICK.go = null;
   startFriendRace(mapId, 'zoom', tmode || 'road');
-  R.online = true; R.players = [R.players[0]]; R.players[0].name = 'You'; R.remotes = []; R.p = R.players[0];
+  R.online = true; R.players = [R.players[0]]; R.players[0].name = 'You'; R.remotes = []; R.p = R.players[0]; R.round = ONL.round;
   ONL.syncTimer = setInterval(onlineSync, ONLINE.syncMs);
 }
+const raceData = me => ({ car: me.base.shape, c: me.paint, j: 1, d: Math.round(me.dist), x: +me.x.toFixed(3), s: Math.round(me.speed), lap: me.lap, fin: me.finished ? 1 : 0, r: R.round, first: ONL.host ? 1 : 0 });
 async function onlineSync() {   // send my car, read everybody else's (about 7 times a second)
   if (!R || !R.online || ONL.syncing) return; ONL.syncing = true;
   const me = R.players[0], base = 'races/' + ONL.code + '/players/';
   try {
-    await NET.put(base + ONL.slot, { car: me.base.shape, c: me.paint, j: 1, d: Math.round(me.dist), x: +me.x.toFixed(3), s: Math.round(me.speed), lap: me.lap, fin: me.finished ? 1 : 0 });
+    await NET.put(base + ONL.slot, raceData(me));
     const ps = (await NET.get('races/' + ONL.code + '/players')).val;
     if (!R || !R.online) return;
     if (!ps) { if (!R.hostLeft) { R.hostLeft = true; fpop(me, 'Your friends left - finish the race!', '#fff'); } return; }
-    ONLINE.slots.filter(s => s !== ONL.slot && ps[s]).forEach(s => {
+    ONLINE.slots.filter(s => s !== ONL.slot && ps[s] && ps[s].r === R.round).forEach(s => {   // only cars from THIS round (old finish data is ignored)
       const v = ps[s]; let q = R.remotes.find(r => r.slot === s);
       if (!q) { q = { slot: s, name: 'Racer ' + s.slice(1), finished: false, place: 1 }; R.remotes.push(q); }
       Object.assign(q, { dist: v.d || 0, x: v.x || 0, speed: v.s || 0, lap: v.lap || 1, paint: /^#[0-9a-f]{3,8}$/i.test(v.c) ? v.c : '#cfe8ff' });
@@ -1631,15 +1638,16 @@ async function onlineSync() {   // send my car, read everybody else's (about 7 t
   } catch (e) { /* blip */ } finally { ONL.syncing = false; }
 }
 function showOnlineResults() {
+  if (ONL.code && ONL.slot) NET.put('races/' + ONL.code + '/players/' + ONL.slot, raceData(R.players[0])).catch(() => {});   // one last send, so friends surely see that I finished
   const r = R; R = null; stopOnline(); FT.clear(); endDrag(); setPad(false); Object.keys(keys).forEach(k => keys[k] = false);
   const me = r.players[0], all = [me].concat(r.remotes).sort((a, b) => a.place - b.place);
-  // names: NOT sent by default. The race node stays SHARE.ms (30 s) so the winner can tap "Share names? YES", then the host deletes it (names go with it).
+  // names: NOT sent by default; the winner can tap "Share names? YES". They are wiped when the next round starts (state is replaced).
   const win = all[0];
-  Object.assign(SHARE, { code: ONL.code, slot: ONL.slot, host: ONL.host, iWon: win === me, winSlot: win === me ? ONL.slot : win.slot, names: {}, all, me, on: false });
-  clearInterval(SHARE.timer); clearTimeout(SHARE.delT);
-  if (ONL.host) SHARE.delT = setTimeout(shareEnd, SHARE.ms);
-  SHARE.timer = setInterval(sharePoll, 1000);
-  Object.assign(ONL, { code: null, slot: null, host: false, node: null });
+  Object.assign(SHARE, { code: ONL.code, slot: ONL.slot, host: ONL.host, round: r.round, iWon: win === me, winSlot: win === me ? ONL.slot : win.slot, names: {}, all, me, on: false });
+  clearInterval(SHARE.timer); SHARE.timer = setInterval(sharePoll, 1000);
+  // my finished car stays in my slot until the next round (it is tagged with this round, so the next race ignores it)
+  if (ONL.host && ONL.code) NET.put('races/' + ONL.code + '/state/phase', 'lobby').then(() => NET.put('races/' + ONL.code + '/state/at', Date.now())).catch(() => {});   // friends can join free slots now
+  ONL.lobbyTimer = setInterval(lobbyPoll, 1000);   // keep watching the lobby: the host's next Race again pulls everyone in
   renderOnlineResults(); show('results'); sound('win');
 }
 const SHARE = { ms: 30000, timer: 0, delT: 0, names: {} };
@@ -1651,10 +1659,10 @@ function renderOnlineResults() {
     '<div class="card" style="margin:auto;max-width:420px;text-align:center">' + all.map(q => '<div class="big">' + ['🥇', '🥈', '🥉', '🏅'][q.place - 1] + ' ' + shownName(q === me ? SHARE.slot : q.slot) + (q === me ? ' (you)' : '') + '</div>').join('') + '</div>' +
     (iWon && !SHARE.on && SHARE.code ? center('<p>Tell everybody the names?</p>' + btn('Share names? YES', 'shareNames', '', 'green big1')) : '') +
     (SHARE.on ? '<p style="text-align:center">🤝 Names shared!</p>' : '') +
-    '<p style="text-align:center">Great racing, everybody! 👋</p>' + center(btn('🔁 Race again!', 'go', 'online', 'green big1') + btn('🏠 Home', 'go', 'home', 'blue'));
+    '<p style="text-align:center">Great racing, everybody! 👋</p>' + center(btn('🔁 Race again! (back to the lobby)', 'onlineAgain', '', 'green big1') + btn('⬅ Leave', 'onlineLeave', '', 'grey'));
 }
 async function shareNames() {   // winner only: flag + own name, both INSIDE state (no new top-level child)
-  if (!SHARE.iWon || !SHARE.code) return;
+  if (!SHARE.iWon || !SHARE.code || ONL.round !== SHARE.round) return;   // too late: the next round already started
   const base = 'races/' + SHARE.code + '/state/';
   try { await NET.put(base + 'share', 1); if (S.myName) await NET.put(base + 'names/' + SHARE.slot, S.myName); } catch (e) { popup('📡 Could not share right now.'); return; }
   SHARE.on = true; if (S.myName) SHARE.names[SHARE.slot] = S.myName; renderOnlineResults(); if (screen === 'results') show('results');
@@ -1664,14 +1672,14 @@ async function sharePoll() {   // everybody: if the winner said YES, publish my 
   try {
     const st = (await NET.get('races/' + SHARE.code + '/state')).val;
     if (!st) { clearInterval(SHARE.timer); SHARE.code = null; return; }
-    if (!st.share) return;
+    if (!st.share || (st.round || 0) !== (SHARE.round || 0)) return;   // only this round's YES counts
     const names = st.names || {};
     if (S.myName && names[SHARE.slot] !== S.myName) await NET.put('races/' + SHARE.code + '/state/names/' + SHARE.slot, S.myName);
     ONLINE.slots.forEach(s => { const n = cleanName(names[s]); if (n) SHARE.names[s] = n; });
     SHARE.on = true; renderOnlineResults(); if (screen === 'results') show('results');
   } catch (e) {}
 }
-function shareEnd() { clearInterval(SHARE.timer); if (SHARE.host && SHARE.code) NET.del('races/' + SHARE.code).catch(() => {}); SHARE.code = null; }
+function shareEnd() { clearInterval(SHARE.timer); SHARE.code = null; }   // stop watching for names (the lobby itself stays open)
 
 /* =====================================================================
    MENUS (plain HTML). Buttons carry data-act="..." and ACT handles them.
@@ -1779,11 +1787,11 @@ const SCREENS = {
   },
   lobby() {
     const n = ONL.node ? playerCount(ONL.node) : 1, map = ONL.node && ONL.node.state ? ONL.node.state.map : 'grass';
-    const left = ONL.node ? Math.max(0, Math.ceil((ONLINE.lobbyMs - (Date.now() - ONL.node.created)) / 60000)) : 5;
+    const left = ONL.node ? Math.max(0, Math.ceil((ONLINE.lobbyMs - (Date.now() - lastActive(ONL.node))) / 60000)) : 5;
     return '<h1>🌐 Waiting for racers</h1><div class="card" style="margin:auto;max-width:620px;text-align:center"><p>Race code:</p><div style="font-size:44px;font-weight:900;letter-spacing:3px;color:#ffd23f">' + ONL.code + '</div>' +
       '<p style="font-size:40px">' + ONLINE.slots.map(s => { const pl = ONL.node && ONL.node.players && ONL.node.players[s]; return '<span data-slot="' + s + '" style="display:inline-block;margin:0 6px;text-align:center;vertical-align:top' + (pl ? '' : ';opacity:.3') + '">🚗' + (pl && pl.first ? '<br><span class="firstBadge" style="font-size:18px;background:#ffd23f;color:#222;border-radius:10px;padding:2px 8px">⭐ First Racer</span>' : '') + '</span>'; }).join('') + '</p><p>' + n + ' of 4 racers are in' + (ONL.host ? '' : ' · you are Racer ' + ONL.slot.slice(1)) + '</p>' +
       (ONL.host ? '<p>Map:</p>' + MAPS.map(m => btn(m.emoji + ' ' + m.name, 'onlineMap', m.id, 'small ' + (map === m.id ? 'green' : 'grey'))).join('') + '<br><br>' +
-        btn('🏁 START!', 'onlineStart', '', 'green', n < 2) + (n < 2 ? '<p class="muted">Tell a friend the code! START works when 2 or more are in. It starts by itself at 4.</p>' : '') + '<p class="muted">The race closes in ' + left + ' min if nobody starts it.</p>'
+        btn(ONL.round >= 0 ? '🔁 Race again!' : '🏁 START!', 'onlineStart', '', 'green big1', n < 2) + (n < 2 ? '<p class="muted">Tell a friend the code! START works when 2 or more are in. It starts by itself at 4.</p>' : '') + '<p class="muted">The race closes in ' + left + ' min if nobody starts it.</p>'
         : '<p>Waiting for the host to press START... 🙂</p>') + '</div>' + center(btn('⬅ Leave', 'onlineLeave', '', 'grey'));
   },
   results: () => resultsHTML,
@@ -1892,6 +1900,7 @@ const ACT = {
   onlineStart: () => { if (ONL.host && ONL.node && playerCount(ONL.node) >= 2) pickTrack(t => onlineStart(t), 'lobby'); },   // only the host picks; friends get it through state
   onlineMap: async id => { if (!ONL.host || !MAPS.some(m => m.id === id)) return; try { await NET.put('races/' + ONL.code + '/state', { phase: 'lobby', map: id }); } catch (e) {} lobbyPoll(); },
   onlineLeave: () => { leaveOnline(); show('online'); },
+  onlineAgain: () => backToLobby(),
   friendMap: id => { friendSetup.map = id; show('friend'); },
   friendCar: id => { if (FRIEND_CARS.includes(id)) { friendSetup.p2 = id; show('friend'); } },
   friendGo: () => { if (lastFriend && screen === 'results') Object.assign(friendSetup, { map: lastFriend.map, p2: lastFriend.p2 }); const fs = { map: friendSetup.map, p2: friendSetup.p2 }, back = screen;
@@ -1987,6 +1996,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set R(v) { R = v; }, get screen() { return screen; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, BOATS, curBoat, hasBoat, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline, TRACK_MODES, PICK, pickTrack, chooseTrack, onlineState, askName, nameOk, NAME, cleanName, SHARE, shareNames, sharePoll, shareEnd, renderOnlineResults };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set R(v) { R = v; }, get screen() { return screen; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, BOATS, curBoat, hasBoat, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline, TRACK_MODES, PICK, pickTrack, chooseTrack, onlineState, backToLobby, lastActive, startLobby, askName, nameOk, NAME, cleanName, SHARE, shareNames, sharePoll, shareEnd, renderOnlineResults };   // for testing only
 </script>
 </body></html>

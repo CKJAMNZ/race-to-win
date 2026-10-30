@@ -286,3 +286,31 @@ Jeff said the player's car hid most of the track, so I changed the view in `VIEW
 - The drag touch area stays the old big size, so it's still easy to grab the car. Physics are unchanged.
 
 Tests: full suite 170/170 with zero console errors. Before/after screenshots at iPad landscape (1180×820) and portrait (820×1180), on a straight and a curve: `shots/cam-before.png`, `shots/cam-after.png`, plus `cam-{before,after}-land-curve.png`, `-port-straight.png` and `-port-curve.png` (`tests/cam-shots.js`).
+
+## Persistent online lobby: race again with the same code (30 Oct 2026, built locally, NOT pushed - waiting for Jeff's push approval)
+- After an online race, everyone keeps the same code and the same slot (p1-p4), and the ⭐ First Racer badge stays. Results screen: **🔁 Race again! (back to the lobby)** or **⬅ Leave**.
+- In the lobby, the host's big button says **🔁 Race again!**. The host picks the track mode, and every friend who is still in follows automatically through state, including friends still on their results screen. Joiners never retype the code.
+- **State** (still only `players` and `state` under `races/CODE`): `state = { phase: 'go'|'lobby', map, tmode, round, at }`.
+  - Each new race replaces the whole state, so `share` and `names` from the last race are wiped.
+  - `round` counts races (0, 1, 2…). Each car's data carries `r: round`, so finish data from an old race is ignored in the next one, and a joiner never re-runs a round it already raced.
+  - When the host finishes, the host sets `phase: 'lobby'` and `at: now`.
+- **Joining between races:** a new friend can take a free slot whenever `phase` is `lobby`. It's still 4 max ("That race is full"). During a race they're told "They are racing right now! Try again when the race is over."
+- **Closing:**
+  - The host taps Leave (in the lobby or on the results screen), which deletes the race node.
+  - Or the host's game deletes it **10 minutes** after the last activity (`state.at`) if no race starts.
+  - A friend who leaves frees only their own slot.
+  - The old "delete after the race" and the 30 s name timer are gone. Names now live only until the next race starts or the lobby closes.
+  - A new host can't take a code whose last activity was under 10 minutes ago.
+- **Names:** unchanged. They're shared only if that race's winner taps YES, and only for that race (`state.round` must match).
+- Also fixed: each racer sends one last "I finished" update when their results show, so friends always see the finish.
+- **Firebase rules:** no change needed. Everything new is inside `state` (`round`, `at`) or inside a player slot (`r`, `first`). The real-DB smoke test confirmed the current rules accept them.
+- **Tests:** `tests/play.js` **180/180, 0 console errors** (10 new lobby checks, plus older checks updated from "deleted after race" to "lobby stays"). The new checks cover:
+  - two races in a row with one code: the same code, slot and badge, round 1, the new mode, and share and names cleared
+  - old-round finish data ignored, and a stale `go` not re-run
+  - a joiner following into round 3
+  - a freed slot reused and the 5th player told it's full
+  - a joiner leaving frees only their slot
+  - the 10-minute timeout, host Leave deleting the node, and a recently active lobby that can't be taken
+- **Real-database smoke test:** `tests/online-smoke-lobby.js` (2 pages, one code, two races) passed; output is in `tests/last-smoke-lobby.txt`. It covered both races, the right winners, the mode in each round, names only after YES and wiped at race 2, the joiner keeping p2, a joiner leaving freeing p2, and host Leave deleting the node. 0 page errors.
+- **Screenshots:** `shots/lobby-01-results-race1.png`, `lobby-02-back-in-lobby.png`, `lobby-03-real-db-host-lobby-after-race.png`, `lobby-04-real-db-joiner-lobby-after-race.png`.
+- **Caveat:** online winners are still decided on each iPad. With real network delay (~1 s), two racers who finish within about a second can both see "You WON". The next step is the finish-time tiebreak.
