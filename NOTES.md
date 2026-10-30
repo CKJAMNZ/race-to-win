@@ -278,3 +278,11 @@ Still to do: a preview before you pay (right now each tap costs $50 straight awa
 **Screenshots:** `shots/mode-01-picker.png`, `mode-02-offroad.png`, `mode-03-onroad.png`, `mode-04-mountain-hills.png`, `mode-05-noodle-off.png`, `mode-05-noodle-hills.png`, `mode-06-friend-offroad.png`, `mode-07-lobby-first-racer.png`, `mode-08-race-again.png`, `names-01..06-*.png`.
 
 **Next steps:** mode-specific physics (slippery gravel, slower climbs on hills), per-mode trophies, a real road curve or elevation for hills, a "copy code" button, and finish-time tiebreak (two iPads can both say "You WON" in a dead heat, a known limit).
+
+## Camera view: see more road (30 Oct 2026, built locally, NOT pushed)
+Jeff said the player's car hid most of the track, so I changed the view in `VIEW` / `carScale()` in `src/p5.js`:
+- The horizon is higher: 38% of the screen instead of 45%, so more road ahead shows.
+- Your car is drawn smaller: scale 0.5 instead of 0.72, and never taller than 30% of the screen height.
+- The drag touch area stays the old big size, so it's still easy to grab the car. Physics are unchanged.
+
+Tests: full suite 170/170 with zero console errors. Before/after screenshots at iPad landscape (1180×820) and portrait (820×1180), on a straight and a curve: `shots/cam-before.png`, `shots/cam-after.png`, plus `cam-{before,after}-land-curve.png`, `-port-straight.png` and `-port-curve.png` (`tests/cam-shots.js`).
