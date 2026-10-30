@@ -16,6 +16,7 @@ h2{margin:6px 0 10px;font-size:28px}
 .btn:active{transform:translateY(3px);box-shadow:0 2px 0 #b38900}
 .btn.blue{background:#5bd0ff;box-shadow:0 5px 0 #1b7fa8}.btn.green{background:#6cf08a;box-shadow:0 5px 0 #2a9c47}
 .btn.red{background:#ff7a8a;box-shadow:0 5px 0 #b0384a}.btn.grey,.btn:disabled{background:#999;box-shadow:0 5px 0 #555;color:#333}
+.btn.big1{font-size:30px;padding:20px 34px;min-width:260px}
 .btn.small{font-size:16px;padding:8px 12px;min-width:0;border-radius:12px}
 .card{background:#0005;border-radius:18px;padding:12px;margin:6px;min-width:200px;flex:1 1 220px;max-width:330px}
 .card.on{outline:4px solid #ffd23f}
@@ -202,6 +203,14 @@ const WEATHER = [{ id: 'sun', name: '☀️ Sunny' }, { id: 'rain', name: '🌧�
 //   'redracer' (old "Red Racer", the red sports car)    -> 'minibug' ("Mini Bug")
 const CAR_ID_MAP = { bug: 'beetle', redracer: 'minibug' };
 function migrateCarIds(s) { (s.cars || []).forEach(c => { if (CAR_ID_MAP[c.base]) c.base = CAR_ID_MAP[c.base]; }); return s; }
+// TRACK MODES: picked on a big screen before every race. Only the look changes (no physics).
+const TRACK_MODES = [
+  { id: 'off', emoji: '🪨', name: 'Off-road', desc: 'Bumpy brown dirt and pebbles' },
+  { id: 'road', emoji: '🛣️', name: 'On-road', desc: 'Smooth paved road' },
+  { id: 'hills', emoji: '⛰️', name: 'Mountain hills', desc: 'Green hills, up and down' },
+];
+const cleanName = s => String(s || '').replace(/[^A-Za-z0-9 ]/g, '').replace(/ +/g, ' ').trim().slice(0, 12);   // letters, numbers, spaces; max 12
+const tmodeOk = id => TRACK_MODES.some(m => m.id === id) ? id : 'road';
 const SAVE_KEY = 'raceToWin_v2', OLD_KEY = 'raceToWin_v1';
 const uid = () => Math.random().toString(36).slice(2, 9);
 let S;
@@ -211,7 +220,7 @@ function freshSave() {
   return { v: 2, money: ECONOMY.startMoney, cars: [ghost], parts: [tire], equip: { car: ghost.id, tire: tire.id, boost: null, wing: null, horn: null },
     paint: '#ff2d55', passedTest: false, trophies: [], wins: 0, races: 0, streak: 0, lastDaily: '', luck: { spins: 0, sinceRare: 0, sinceRuby: 0 },
     patches: 0, freePaints: 0, moonTaps: 0, moonBonus: false, lastWeekly: Date.now(), maxMoney: ECONOMY.startMoney,
-    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false, boat: false, boats: [], boatSel: 'splash' };   // boats/boatSel: the 5 newer boats (old saves get [] and 'splash')   // boat: bought the pool Boat (old saves get false)
+    settings: { diff: 'normal', autoGo: true, autoGoDrag: false, controls: 'drag', night: 'auto', sound: true }, dragHintSeen: false, boat: false, boats: [], boatSel: 'splash', trackMode: 'road', myName: '', friendName: '' };   // names: stored on this iPad only (never sent unless the online winner taps YES)   // trackMode: last picked track mode (old saves get 'road')   // boats/boatSel: the 5 newer boats (old saves get [] and 'splash')   // boat: bought the pool Boat (old saves get false)
 }
 // Round 1 saves are carried over: money, wins, races, cars, parts, trophies.
 function migrateV1(o) {
@@ -792,6 +801,7 @@ function playerStats() {
     glide: (wt >= 0 ? TIER_STATS.glide[wt] : 0) + (b.fly || 0), jumpV: 2000,
   };
 }
+let lastRace = null;
 function startRace(opts) {
   const map = opts.noodle ? NOODLE_MAP : MAPS.find(m => m.id === opts.map), track = buildTrack(map), mode = opts.mode, lvl = DIFFICULTY.levels[S.settings.diff];
   const np = S.settings.night, night = opts.night != null ? opts.night : (np === 'always' || (np === 'auto' && mode !== 'practice' && Math.random() < 0.25));
@@ -803,6 +813,8 @@ function startRace(opts) {
     p: { name: 'You', dist: 0, x: 0, speed: 0, air: 0, vy: 0, glideT: 0, boostT: 0, zoomT: 0, shieldT: 0, ghostT: 0, ghostUsed: false, rocketT: 0, lockT: 0, rocketUsed: false, bounceLeft: 0, hornUsed: false,
       inPool: false, towing: false, turboUsed: false, splashTurboT: 0, bubbleUsed: false, edgeT: 0, poolBumps: 0, fuel: 100, tireHP: 100, pitT: 0, lap: 1, pitWanted: false, place: 1, finished: false },
   };
+  R.tmode = tmodeOk(opts.tmode || S.trackMode);
+  lastRace = { mode: opts.mode, map: opts.map, weather: opts.weather, noodle: opts.noodle, night: opts.night };   // for the 🔁 Race again button
   R.noodle = !!opts.noodle; R.splashT = 0; if (mode !== 'race') track.pool = null;   // the swimming pool is only in real races (practice + qualifying stay simple)
   const skills = mode === 'practice' ? [DIFFICULTY.practiceBot] : mode === 'qualify' ? [] : DIFFICULTY.mapSkill[map.id].map(s => s * lvl);
   const city = map.id === 'city';
@@ -1083,10 +1095,34 @@ function drawSprite(img, worldW, scale, x, y, clipY, alpha) {    // x,y = bottom
   } else g.drawImage(img, 0, 0, img.width, img.height * (1 - clipH / dh), dx, dy, dw, dh - clipH);
   if (alpha) g.globalAlpha = 1;
 }
+/* TRACK MODE LOOKS (picked before every race). Only colours and shapes; physics are unchanged.
+   Off-road: brown dirt ground with pebbles, a gravel track and stone curbs, no painted centre line.
+   On-road: the map's normal paved look. Mountain hills: green ground, rolling hills on the horizon, a gentle bob. */
+const TRACK_LOOK = {
+  off: { ground: ['#a8743f', '#966534'], groundN: ['#3a2814', '#33230f'], road: ['#c9a06a', '#bd935c'], roadN: ['#4a3a26', '#433421'], curb: ['#7a4f25', '#e9d3a8'] },
+  road: {},
+  hills: { ground: ['#5ccf4f', '#4cbf41'], groundN: ['#113a14', '#0e3311'] },
+};
+function drawPebbles(s, a, b, night) {   // little grey/brown stones beside the dirt track, same spots every lap
+  const h = a.y - b.y, cols = night ? ['#5b4a3a', '#4a3c30'] : ['#e8dcc8', '#6e5a48', '#d9c2a0'];
+  for (let k = 0; k < 4; k++) {
+    const r = ((s.i * 7 + k * 13) % 10) / 10, side = k % 2 ? 1 : -1, x = a.x + side * a.w * (1.35 + r * 1.8), y = b.y + h * (((s.i + k * 3) % 5) / 5 + 0.1);
+    g.fillStyle = cols[(s.i + k) % cols.length]; g.beginPath(); g.ellipse(x, y, Math.max(1.5 * K, a.w * 0.05), Math.max(1 * K, a.w * 0.03), 0, 0, 7); g.fill();
+  }
+}
+function drawHillsBack(horizon, night) {   // two layers of big rolling green hills that slide slowly as you turn
+  [[0.16, 0.9, night ? '#1d4a22' : '#7fd96a', 0.6], [0.09, 1.7, night ? '#163d1a' : '#3fae46', 1]].forEach(([hh, freq, c, par]) => {
+    const off = R.skyX * W * 0.5 * par;
+    g.fillStyle = c; g.beginPath(); g.moveTo(0, horizon + 2);
+    for (let x = 0; x <= W; x += 8 * K) { const u = (x + off) / W * Math.PI * 2 * freq; g.lineTo(x, horizon - H * hh * (0.55 + 0.45 * Math.sin(u) * Math.sin(u * 0.37 + 1))); }
+    g.lineTo(W, horizon + 2); g.closePath(); g.fill();
+  });
+}
 function render() {
   const p = R.p, segs = R.track.segs, N = segs.length, len = R.track.len, col = R.map.col, night = R.night;
   const camZ = p.dist - PLAYER_Z, camZw = ((camZ % len) + len) % len, base = findSeg(camZ), basePct = (((camZ % SEG) + SEG) % SEG) / SEG;
-  const pseg = findSeg(p.dist), playerY = lerp(pseg.y1, pseg.y2, (((p.dist % SEG) + SEG) % SEG) / SEG), horizon = H * 0.45;
+  const pseg = findSeg(p.dist), playerY = lerp(pseg.y1, pseg.y2, (((p.dist % SEG) + SEG) % SEG) / SEG), tm = R.tmode || 'road', TL = TRACK_LOOK[tm],
+    horizon = H * 0.45 + (tm === 'hills' ? Math.sin(R.t * 1.3) * H * 0.012 : 0);   // Mountain hills: a gentle up/down bob
   g.imageSmoothingEnabled = false;
   // sky with sun or moon, then the far background
   const sky = g.createLinearGradient(0, 0, 0, horizon);
@@ -1100,7 +1136,9 @@ function render() {
   if (night && !R.blood) { g.fillStyle = '#d8d4b0'; g.beginPath(); g.arc(mx - mr * 0.3, my - mr * 0.2, mr * 0.2, 0, 7); g.fill(); }
   const bg = bgLayer(R.map, night), bh = H * 0.2, bw = bh * bg.width / bg.height, off = ((R.skyX * bw) % bw + bw) % bw;
   for (let x = -off; x < W; x += bw) g.drawImage(bg, Math.floor(x), horizon - bh + 2 + clamp(playerY * 0.0005, -20, 20) * K, Math.ceil(bw) + 1, bh);
-  g.fillStyle = night ? '#0b230f' : col.g1; g.fillRect(0, horizon, W, H - horizon);
+  if (tm === 'hills') drawHillsBack(horizon, night);
+  const gc = TL.ground ? (night ? TL.groundN : TL.ground) : null;   // ground colours per track mode (On-road keeps the map's own)
+  g.fillStyle = gc ? gc[0] : night ? '#0b230f' : col.g1; g.fillRect(0, horizon, W, H - horizon);
   // road: near to far, remembering the highest point drawn so hills hide what's behind them
   let maxY = H, x = 0, dx = -base.curve * basePct;
   const camX = p.x * ROAD_W, camY = playerY + CAM_H;
@@ -1115,8 +1153,10 @@ function render() {
     const stripe = Math.floor(s.i / 3) % 2;
     g.fillStyle = night ? (Math.floor(s.i / 6) % 2 ? '#0b230f' : '#0e2a12') : (Math.floor(s.i / 6) % 2 ? col.g1 : col.g2);
     if (R.map.id === 'space' && night) g.fillStyle = col.g2;
+    if (gc) g.fillStyle = gc[Math.floor(s.i / 6) % 2];
     g.fillRect(0, b.y, W, a.y - b.y);
-    const r1 = a.w / 6, r2 = b.w / 6, curb = night ? (stripe ? '#ff3bd0' : '#3bf0ff') : (stripe ? '#e8232b' : '#ffffff');   // striped curbs (glow at night)
+    if (tm === 'off' && a.y - b.y > 1.5 * K) drawPebbles(s, a, b, night);
+    const r1 = a.w / 6, r2 = b.w / 6, curb = TL.curb ? TL.curb[stripe] : night ? (stripe ? '#ff3bd0' : '#3bf0ff') : (stripe ? '#e8232b' : '#ffffff');   // striped curbs (glow at night)
     poly(a.x - a.w - r1, a.y, a.x - a.w, a.y, b.x - b.w, b.y, b.x - b.w - r2, b.y, curb);
     poly(a.x + a.w + r1, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x + b.w + r2, b.y, curb);
     const start = s.i < 3;
@@ -1128,8 +1168,8 @@ function render() {
       if (!edge) [-0.5, 0.5].forEach(o => { const l1 = a.w / 30, l2 = b.w / 30, ax = a.x + o * a.w, bx = b.x + o * b.w; poly(ax - l1, a.y, ax + l1, a.y, bx + l2, b.y, bx - l2, b.y, Math.floor(s.i / 2) % 2 ? '#ff3b3b' : '#ffffff'); });
       maxY = s.p2.y; continue;
     }
-    poly(a.x - a.w, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x - b.w, b.y, start ? (s.i % 2 ? '#fff' : '#222') : night ? (stripe ? '#22223c' : '#1e1e36') : (stripe ? col.r1 : col.r2));
-    if (Math.floor(s.i / 4) % 2 && !start) { const l1 = a.w / 40, l2 = b.w / 40; poly(a.x - l1, a.y, a.x + l1, a.y, b.x + l2, b.y, b.x - l2, b.y, night ? '#ffff80' : '#f4f4f4'); }   // dashed centre line
+    poly(a.x - a.w, a.y, a.x + a.w, a.y, b.x + b.w, b.y, b.x - b.w, b.y, start ? (s.i % 2 ? '#fff' : '#222') : TL.road ? (night ? TL.roadN : TL.road)[stripe] : night ? (stripe ? '#22223c' : '#1e1e36') : (stripe ? col.r1 : col.r2));
+    if (Math.floor(s.i / 4) % 2 && !start && tm !== 'off') { const l1 = a.w / 40, l2 = b.w / 40; poly(a.x - l1, a.y, a.x + l1, a.y, b.x + l2, b.y, b.x - l2, b.y, night ? '#ffff80' : '#f4f4f4'); }   // dashed centre line
     if (s.pad != null) { const w1 = a.w * 0.28, w2 = b.w * 0.28, ax = a.x + s.pad * a.w, bx = b.x + s.pad * b.w; poly(ax - w1, a.y, ax + w1, a.y, bx + w2, b.y, bx - w2, b.y, s.i % 2 ? '#5bd0ff' : '#ffd23f'); }
     maxY = s.p2.y;
   }
@@ -1362,7 +1402,7 @@ function drawDrag() {   // big friendly hint the first time, and a little ring +
 const FRIEND_CARS = ['zoom', 'beetle', 'truck', 'shark', 'police'];
 const FT = new Map();   // pointerId -> { pl, x0, y0 } : which finger belongs to which player
 function friendStats(b) { return { max: BASE_MAX * b.speed, accel: BASE_MAX / 4.5, handle: b.handle, grip: b.grip }; }
-function startFriendRace(mapId, p2car) {
+function startFriendRace(mapId, p2car, tmode) {
   const map = MAPS.find(m => m.id === mapId), track = buildTrack(map); track.pool = null;
   const b1 = myBase(), b2 = CARS.find(c => c.id === p2car) || CARS[1];
   const mk = (name, base, paint, x) => ({ name, base, paint, stats: friendStats(base), dist: SEG * 2, x, speed: 0, air: 0, vy: 0, lap: 1, coins: 0, finished: false, time: 0, place: 1, pops: [],
@@ -1371,7 +1411,7 @@ function startFriendRace(mapId, p2car) {
   p1.stats = Object.assign(friendStats(b1), { max: playerStats().max, handle: playerStats().handle, grip: playerStats().grip });   // P1's own parts count (read only)
   R = { mode: 'friend', friend: true, map, track, night: false, blood: false, weather: 'sun', laps: DIFFICULTY.laps[map.id], phase: 'count', count: 3, t: 0, frame: 0, skyX: 0,
     pops: [], bots: [], players: [p1, p2], fkeys: [{}, {}], finOrder: [], winner: null, doneT: 0, splashT: 0, stats: p1.stats, coins: 0 };
-  R.p = p1; R.minimapColors = []; FT.clear(); endDrag();
+  R.tmode = tmodeOk(tmode || S.trackMode); R.p = p1; R.minimapColors = []; FT.clear(); endDrag();
   showUI(false); setPad(true); sound('go');
 }
 const fpop = (p, text, color) => { p.pops.push({ text, color: color || '#fff', t: 1.6 }); if (p.pops.length > 3) p.pops.shift(); };
@@ -1472,7 +1512,7 @@ function showFriendResults() {
   resultsHTML = '<h1 style="font-size:56px">🎉 ' + win.name + ' WINS! 🎉</h1><div style="text-align:center;font-size:54px">🏆🎈🎊⭐🎊🎈🏆</div>' +
     '<div class="card" style="margin:auto;max-width:460px;text-align:center">' + line(win) + '<br>' + line(lose) + '</div>' +
     '<p style="text-align:center">Great racing, both of you! ' + r.map.emoji + ' ' + r.map.name + '</p>' +
-    center(btn('🔁 Race again!', 'friendGo', '', 'green') + btn('🏠 Home', 'go', 'home', 'blue'));
+    center(btn('🔁 Race again!', 'friendGo', '', 'green big1') + btn('🏠 Home', 'go', 'home', 'blue'));
   lastFriend = { map: r.map.id, p2: b.base.id }; show('results'); sound('win');
 }
 let lastFriend = null;
@@ -1513,10 +1553,10 @@ async function hostRace(raw) {   // returns '' on success, or a friendly message
   try {
     const old = await NET.get('races/' + code);
     if (old.val && Date.now() - (old.val.created || 0) < ONLINE.lobbyMs) return 'That code is being used right now. Try another one!';
-    const ok = await NET.put('races/' + code, { created: Date.now(), players: { p1: myCarData() }, state: { phase: 'lobby', map: 'grass' } }, old.etag);
+    const ok = await NET.put('races/' + code, { created: Date.now(), players: { p1: Object.assign(myCarData(), { first: 1 }) }, state: { phase: 'lobby', map: 'grass' } }, old.etag);
     if (!ok) return 'Somebody just took that code. Try another one!';
   } catch (e) { return 'offline'; }
-  Object.assign(ONL, { code, slot: 'p1', host: true, node: null }); startLobby(); return '';
+  Object.assign(ONL, { code, slot: 'p1', host: true, node: null }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
 }
 async function claimSlot(code) {   // first free slot p2-p4, claimed with if-match so two friends never get the same one
   const race = await NET.get('races/' + code);
@@ -1536,7 +1576,7 @@ async function joinRace(raw) {
   if (slot === 'none') return 'No race with that code. Check it with your friend!';
   if (slot === 'started') return 'That race has already started. Ask for a new code!';
   if (slot === 'full') return 'That race is full (4 racers max).';
-  Object.assign(ONL, { code, slot, host: false, node: null }); startLobby(); return '';
+  Object.assign(ONL, { code, slot, host: false, node: null }); startLobby(); askName('Type your name', S.myName, n => { S.myName = n; save(); }, 'lobby'); return '';
 }
 function stopOnline() { clearInterval(ONL.lobbyTimer); clearInterval(ONL.syncTimer); ONL.lobbyTimer = ONL.syncTimer = 0; }
 function leaveOnline() {   // host leaving removes the whole race; a friend leaving the lobby frees their slot
@@ -1550,20 +1590,22 @@ async function lobbyPoll() {
     const node = (await NET.get('races/' + ONL.code)).val; ONL.node = node;
     if (!node) { const host = ONL.host; leaveOnline(); popup(host ? 'The race was closed.' : 'That race has ended. Ask your friend for a new code!'); show('online'); return; }
     if (ONL.host && node.state.phase === 'lobby' && Date.now() - node.created > ONLINE.lobbyMs) { leaveOnline(); popup('⏰ Nobody started the race in 5 minutes, so it was closed. Make a new one!'); show('online'); return; }
-    if (node.state.phase === 'go') { beginOnlineRace(node.state.map); return; }
-    if (ONL.host && playerCount(node) >= 4) { await onlineStart(); return; }   // 4 racers: start by itself
+    if (node.state.phase === 'go') { beginOnlineRace(node.state.map, node.state.tmode); return; }
+    if (ONL.host && playerCount(node) >= 4) { if (screen !== 'trackPick') pickTrack(m => onlineStart(m), 'lobby'); return; }   // 4 racers: host picks the track mode, then it starts
     if (screen === 'lobby' && !R) show('lobby');
   } catch (e) { /* network blip: try again next second */ } finally { ONL.busy = false; }
 }
-async function onlineStart() {   // host only, 2+ racers
-  if (!ONL.host || !ONL.node || playerCount(ONL.node) < 2) return;
-  const map = ONL.node.state.map || 'grass';
-  try { await NET.put('races/' + ONL.code + '/state', { phase: 'go', map }); } catch (e) { offlineMsg(); return; }
-  beginOnlineRace(map);
+const onlineState = (map, tmode) => ({ phase: 'go', map, tmode: tmodeOk(tmode) });   // the track mode rides INSIDE state (rules allow no new top-level child)
+async function onlineStart(tmode) {   // host only, 2+ racers; tmode = what the host picked (defaults to their last pick)
+  if (!ONL.host || !ONL.node || playerCount(ONL.node) < 2 || ONL.starting) return;
+  const map = ONL.node.state.map || 'grass', st = onlineState(map, tmode || S.trackMode);
+  ONL.starting = true;
+  try { await NET.put('races/' + ONL.code + '/state', st); } catch (e) { ONL.starting = false; offlineMsg(); return; }
+  ONL.starting = false; beginOnlineRace(map, st.tmode);
 }
-function beginOnlineRace(mapId) {
+function beginOnlineRace(mapId, tmode) {
   clearInterval(ONL.lobbyTimer); ONL.lobbyTimer = 0;
-  startFriendRace(mapId, 'zoom');
+  startFriendRace(mapId, 'zoom', tmode || 'road');
   R.online = true; R.players = [R.players[0]]; R.players[0].name = 'You'; R.remotes = []; R.p = R.players[0];
   ONL.syncTimer = setInterval(onlineSync, ONLINE.syncMs);
 }
@@ -1586,13 +1628,45 @@ async function onlineSync() {   // send my car, read everybody else's (about 7 t
 function showOnlineResults() {
   const r = R; R = null; stopOnline(); FT.clear(); endDrag(); setPad(false); Object.keys(keys).forEach(k => keys[k] = false);
   const me = r.players[0], all = [me].concat(r.remotes).sort((a, b) => a.place - b.place);
-  if (ONL.host) NET.del('races/' + ONL.code).catch(() => {});   // the race is over: the host removes it from the database
+  // names: NOT sent by default. The race node stays SHARE.ms (30 s) so the winner can tap "Share names? YES", then the host deletes it (names go with it).
+  const win = all[0];
+  Object.assign(SHARE, { code: ONL.code, slot: ONL.slot, host: ONL.host, iWon: win === me, winSlot: win === me ? ONL.slot : win.slot, names: {}, all, me, on: false });
+  clearInterval(SHARE.timer); clearTimeout(SHARE.delT);
+  if (ONL.host) SHARE.delT = setTimeout(shareEnd, SHARE.ms);
+  SHARE.timer = setInterval(sharePoll, 1000);
   Object.assign(ONL, { code: null, slot: null, host: false, node: null });
-  resultsHTML = '<h1 style="font-size:52px">' + (me.place === 1 ? '🎉 You WON! 🎉' : '🏁 You came ' + ord(me.place) + '!') + '</h1><div style="text-align:center;font-size:50px">🏆🎈🎊⭐🎊🎈🏆</div>' +
-    '<div class="card" style="margin:auto;max-width:420px;text-align:center">' + all.map(q => '<div class="big">' + ['🥇', '🥈', '🥉', '🏅'][q.place - 1] + ' ' + (q === me ? 'You' : q.name) + '</div>').join('') + '</div>' +
-    '<p style="text-align:center">Great racing, everybody! 👋</p>' + center(btn('🌐 Race online again', 'go', 'online', 'green') + btn('🏠 Home', 'go', 'home', 'blue'));
-  show('results'); sound('win');
+  renderOnlineResults(); show('results'); sound('win');
 }
+const SHARE = { ms: 30000, timer: 0, delT: 0, names: {} };
+const shownName = slot => SHARE.names[slot] || (slot === SHARE.slot ? (S.myName || 'You') : 'Friend');
+function renderOnlineResults() {
+  const me = SHARE.me, all = SHARE.all, iWon = SHARE.iWon;
+  const head = iWon ? '🎉 You WON! 🎉' : '🏁 ' + shownName(SHARE.winSlot) + ' won! You came ' + ord(me.place) + '!';
+  resultsHTML = '<h1 style="font-size:52px" id="onlineHead">' + head + '</h1><div style="text-align:center;font-size:50px">🏆🎈🎊⭐🎊🎈🏆</div>' +
+    '<div class="card" style="margin:auto;max-width:420px;text-align:center">' + all.map(q => '<div class="big">' + ['🥇', '🥈', '🥉', '🏅'][q.place - 1] + ' ' + shownName(q === me ? SHARE.slot : q.slot) + (q === me ? ' (you)' : '') + '</div>').join('') + '</div>' +
+    (iWon && !SHARE.on && SHARE.code ? center('<p>Tell everybody the names?</p>' + btn('Share names? YES', 'shareNames', '', 'green big1')) : '') +
+    (SHARE.on ? '<p style="text-align:center">🤝 Names shared!</p>' : '') +
+    '<p style="text-align:center">Great racing, everybody! 👋</p>' + center(btn('🔁 Race again!', 'go', 'online', 'green big1') + btn('🏠 Home', 'go', 'home', 'blue'));
+}
+async function shareNames() {   // winner only: flag + own name, both INSIDE state (no new top-level child)
+  if (!SHARE.iWon || !SHARE.code) return;
+  const base = 'races/' + SHARE.code + '/state/';
+  try { await NET.put(base + 'share', 1); if (S.myName) await NET.put(base + 'names/' + SHARE.slot, S.myName); } catch (e) { popup('📡 Could not share right now.'); return; }
+  SHARE.on = true; if (S.myName) SHARE.names[SHARE.slot] = S.myName; renderOnlineResults(); if (screen === 'results') show('results');
+}
+async function sharePoll() {   // everybody: if the winner said YES, publish my own name into state/names/<my slot>, and read the others
+  if (!SHARE.code) return clearInterval(SHARE.timer);
+  try {
+    const st = (await NET.get('races/' + SHARE.code + '/state')).val;
+    if (!st) { clearInterval(SHARE.timer); SHARE.code = null; return; }
+    if (!st.share) return;
+    const names = st.names || {};
+    if (S.myName && names[SHARE.slot] !== S.myName) await NET.put('races/' + SHARE.code + '/state/names/' + SHARE.slot, S.myName);
+    ONLINE.slots.forEach(s => { const n = cleanName(names[s]); if (n) SHARE.names[s] = n; });
+    SHARE.on = true; renderOnlineResults(); if (screen === 'results') show('results');
+  } catch (e) {}
+}
+function shareEnd() { clearInterval(SHARE.timer); if (SHARE.host && SHARE.code) NET.del('races/' + SHARE.code).catch(() => {}); SHARE.code = null; }
 
 /* =====================================================================
    MENUS (plain HTML). Buttons carry data-act="..." and ACT handles them.
@@ -1607,7 +1681,38 @@ const dailyReady = () => S.lastDaily !== today();
 const prizeMult = m => ECONOMY.mapBonus[m.id] * (1 + ECONOMY.lapBonus * Math.max(0, DIFFICULTY.laps[m.id] - 2));
 const preview = (w, h, shape) => '<canvas class="prev"' + (shape ? ' data-shape="' + shape + '"' : '') + ' width="' + w + '" height="' + h + '" style="width:' + w + 'px;height:' + h + 'px;image-rendering:pixelated"></canvas>';
 const friendSetup = { map: 'grass', p2: 'zoom' };
+/* TRACK MODE PICKER: shown before EVERY race (practice, qualifying, race, Pool Noodle, Friend Race, Online host).
+   Tap a big button, or press 1 / 2 / 3, or arrows + Enter. The last pick is saved (S.trackMode) and highlighted. */
+const PICK = { go: null, back: 'home', sel: 'road' };
+/* NAME ENTRY: big box + big OK. Letters, numbers, spaces, max 12. Saved on this iPad only. */
+const NAME = { title: '', val: '', go: null, back: 'home' };
+function askName(title, val, go, back) { Object.assign(NAME, { title, val: cleanName(val), go, back: back || screen }); show('nameEntry'); setTimeout(() => { const el = $('nameBox'); if (el) el.focus(); }, 50); }
+function nameOk() { if (screen !== 'nameEntry' || !NAME.go) return; const el = $('nameBox'), n = cleanName(el ? el.value : NAME.val), go = NAME.go, back = NAME.back; NAME.go = null; go(n); if (screen === 'nameEntry' && !NAME.go) show(back); }
+function pickTrack(go, back) { PICK.go = go; PICK.back = back || screen; PICK.sel = tmodeOk(S.trackMode); show('trackPick'); }
+function chooseTrack(id) { if (screen !== 'trackPick' || !PICK.go) return; id = tmodeOk(id); S.trackMode = id; save(); const go = PICK.go; PICK.go = null; go(id); }
+addEventListener('keydown', e => { if (screen === 'nameEntry' && e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); nameOk(); } });
+addEventListener('keydown', e => {
+  if (screen !== 'trackPick' || R || $('ui').classList.contains('hide')) return;
+  const k = e.key, i = TRACK_MODES.findIndex(m => m.id === PICK.sel);
+  if (k === '1' || k === '2' || k === '3') { e.preventDefault(); chooseTrack(TRACK_MODES[+k - 1].id); }
+  else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'ArrowRight' || k === 'ArrowDown') { e.preventDefault(); PICK.sel = TRACK_MODES[(i + (k === 'ArrowLeft' || k === 'ArrowUp' ? 2 : 1)) % 3].id; show('trackPick'); }
+  else if (k === 'Enter' || k === ' ') { e.preventDefault(); chooseTrack(PICK.sel); }
+  else if (k === 'Escape') { PICK.go = null; show(PICK.back); }
+});
 const SCREENS = {
+  nameEntry() {
+    return '<h1>✏️ ' + NAME.title + '</h1><div class="card" style="margin:auto;max-width:560px;text-align:center"><p>Letters and numbers, up to 12. It stays on this iPad.</p>' +
+      '<input id="nameBox" maxlength="12" value="' + NAME.val + '" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" style="font-size:36px;padding:12px;border-radius:16px;width:90%;text-align:center">' +
+      '<br>' + btn('✅ OK!', 'nameOk', '', 'green big1') + '</div>';
+  },
+  trackPick() {
+    const art = { off: 'linear-gradient(#8fd3ff 0 35%,#a8743f 35%)', road: 'linear-gradient(#8fd3ff 0 35%,#4cbf41 35% 55%,#555 55%)', hills: 'radial-gradient(ellipse at 30% 100%,#3fae46 0 45%,transparent 46%),radial-gradient(ellipse at 80% 100%,#7fd96a 0 50%,transparent 51%),#8fd3ff' };
+    return '<h1>🏁 Pick your track!</h1><p style="text-align:center" class="muted">Tap one, or press 1, 2 or 3 (arrows + Enter work too)</p><div class="row" id="trackPick">' +
+      TRACK_MODES.map((m, i) => '<button class="btn tpick ' + (PICK.sel === m.id ? 'green on' : 'blue') + '" data-act="trackGo" data-arg="' + m.id + '" style="flex:1 1 240px;min-height:220px;font-size:30px;padding:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">' +
+        '<span style="display:block;width:160px;height:80px;border-radius:14px;border:4px solid #fff;background:' + art[m.id] + ';font-size:44px;line-height:80px">' + m.emoji + '</span>' +
+        '<span>' + (i + 1) + '. ' + m.name + '</span><span style="font-size:17px">' + m.desc + '</span>' + (PICK.sel === m.id ? '<span style="font-size:16px">⭐ last time</span>' : '') + '</button>').join('') +
+      '</div>' + center(btn('⬅ Back', 'trackBack', '', 'grey'));
+  },
   home() {
     const d = S.settings, opt = (label, act, vals, cur) => '<div style="margin-top:8px">' + label + '</div>' + vals.map(v => btn(cap(v), act, v, 'small ' + (cur === v ? 'green' : 'grey'))).join('');
     return '<h1>🏁 Race to Win 🏁</h1><p style="text-align:center" class="muted">A game by Archer</p><div class="row">' +
@@ -1671,7 +1776,7 @@ const SCREENS = {
     const n = ONL.node ? playerCount(ONL.node) : 1, map = ONL.node && ONL.node.state ? ONL.node.state.map : 'grass';
     const left = ONL.node ? Math.max(0, Math.ceil((ONLINE.lobbyMs - (Date.now() - ONL.node.created)) / 60000)) : 5;
     return '<h1>🌐 Waiting for racers</h1><div class="card" style="margin:auto;max-width:620px;text-align:center"><p>Race code:</p><div style="font-size:44px;font-weight:900;letter-spacing:3px;color:#ffd23f">' + ONL.code + '</div>' +
-      '<p style="font-size:40px">' + '🚗'.repeat(n) + '<span style="opacity:.3">' + '🚗'.repeat(4 - n) + '</span></p><p>' + n + ' of 4 racers are in' + (ONL.host ? '' : ' · you are Racer ' + ONL.slot.slice(1)) + '</p>' +
+      '<p style="font-size:40px">' + ONLINE.slots.map(s => { const pl = ONL.node && ONL.node.players && ONL.node.players[s]; return '<span data-slot="' + s + '" style="display:inline-block;margin:0 6px;text-align:center;vertical-align:top' + (pl ? '' : ';opacity:.3') + '">🚗' + (pl && pl.first ? '<br><span class="firstBadge" style="font-size:18px;background:#ffd23f;color:#222;border-radius:10px;padding:2px 8px">⭐ First Racer</span>' : '') + '</span>'; }).join('') + '</p><p>' + n + ' of 4 racers are in' + (ONL.host ? '' : ' · you are Racer ' + ONL.slot.slice(1)) + '</p>' +
       (ONL.host ? '<p>Map:</p>' + MAPS.map(m => btn(m.emoji + ' ' + m.name, 'onlineMap', m.id, 'small ' + (map === m.id ? 'green' : 'grey'))).join('') + '<br><br>' +
         btn('🏁 START!', 'onlineStart', '', 'green', n < 2) + (n < 2 ? '<p class="muted">Tell a friend the code! START works when 2 or more are in. It starts by itself at 4.</p>' : '') + '<p class="muted">The race closes in ' + left + ' min if nobody starts it.</p>'
         : '<p>Waiting for the host to press START... 🙂</p>') + '</div>' + center(btn('⬅ Leave', 'onlineLeave', '', 'grey'));
@@ -1770,25 +1875,34 @@ const ACT = {
   buyBoatX: id => { const bt = BOATS.find(b => b.id === id); if (!bt || bt.id === 'splash' || ownsBoat(id) || !spend(bt.price)) return;
     S.boats = (S.boats || []).concat(id); S.boatSel = id; save(); popup('🎉 You got the ' + bt.emoji + ' ' + bt.name + '! ' + bt.desc); show('garage'); },
   useBoat: id => { if (!ownsBoat(id)) return; S.boatSel = id; save(); show('garage'); },
-  noodle: () => { if (!hasBoat()) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } startRace({ mode: 'race', noodle: true, weather: 'sun' }); },
+  noodle: () => { if (!hasBoat()) { popup('🚤 Buy the Splash Boat in the Garage first!'); return; } pickTrack(t => startRace({ mode: 'race', noodle: true, weather: 'sun', tmode: t })); },
+  trackGo: id => chooseTrack(id),
+  nameOk: () => nameOk(),
+  shareNames: () => shareNames(),
+  raceAgain: () => { if (resultsPrize) { popup('🎁 Pick your prize part first!'); return; } if (!lastRace) return; const lr = lastRace; pickTrack(t => startRace(Object.assign({}, lr, { tmode: t })), 'results'); },
+  trackBack: () => { PICK.go = null; show(PICK.back); },
   makeCode: () => { const el = $('hostCode'); if (el) el.value = makeCode(); },
   hostGo: async () => { const m = await hostRace(($('hostCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
   joinGo: async () => { const m = await joinRace(($('joinCode') || {}).value); if (m === 'offline') offlineMsg(); else if (m) { ONL.msg = m; const el = $('onlineMsg'); if (el) el.textContent = m; popup(m); } else ONL.msg = ''; },
-  onlineStart: () => onlineStart(),
+  onlineStart: () => { if (ONL.host && ONL.node && playerCount(ONL.node) >= 2) pickTrack(t => onlineStart(t), 'lobby'); },   // only the host picks; friends get it through state
   onlineMap: async id => { if (!ONL.host || !MAPS.some(m => m.id === id)) return; try { await NET.put('races/' + ONL.code + '/state', { phase: 'lobby', map: id }); } catch (e) {} lobbyPoll(); },
   onlineLeave: () => { leaveOnline(); show('online'); },
   friendMap: id => { friendSetup.map = id; show('friend'); },
   friendCar: id => { if (FRIEND_CARS.includes(id)) { friendSetup.p2 = id; show('friend'); } },
-  friendGo: () => { if (lastFriend && screen === 'results') Object.assign(friendSetup, { map: lastFriend.map, p2: lastFriend.p2 }); startFriendRace(friendSetup.map, friendSetup.p2); },
-  practice: () => startRace({ mode: 'practice', map: 'grass' }),
+  friendGo: () => { if (lastFriend && screen === 'results') Object.assign(friendSetup, { map: lastFriend.map, p2: lastFriend.p2 }); const fs = { map: friendSetup.map, p2: friendSetup.p2 }, back = screen;
+    askName('Player 1, type your name', S.myName, n1 => askName('Player 2, type your name', S.friendName, n2 => {
+      if (S.myName !== n1 || S.friendName !== n2) { S.myName = n1; S.friendName = n2; save(); }
+      pickTrack(t => { startFriendRace(fs.map, fs.p2, t); R.players[0].name = n1 || 'Player 1'; R.players[1].name = n2 || 'Player 2'; }, back); }, back), back); },   // P1 then P2, then one track pick   // one pick for both players
+  practice: () => pickTrack(t => startRace({ mode: 'practice', map: 'grass', tmode: t })),
   raceMenu: () => { if (!S.passedTest) return; raceSetup = { map: 'grass', weather: pick(WEATHER).id }; show('raceMenu'); },
   pickMap: id => { raceSetup.map = id; raceSetup.grid = null; show('raceMenu'); },
-  qualify: () => startRace({ mode: 'qualify', map: raceSetup.map, weather: raceSetup.weather }),
-  startRace: () => startRace({ mode: 'race', map: raceSetup.map, weather: raceSetup.weather, grid: raceSetup.grid }),
+  qualify: () => { const rs = raceSetup; pickTrack(t => startRace({ mode: 'qualify', map: rs.map, weather: rs.weather, tmode: t })); },
+  startRace: () => { const rs = raceSetup; pickTrack(t => startRace({ mode: 'race', map: rs.map, weather: rs.weather, grid: rs.grid, tmode: t })); },
   spin: () => spinWheel(),
   sellTrophy: i => { const t = S.trophies[+i]; if (!t) return; S.trophies.splice(+i, 1); earn(ECONOMY.trophySell[t.tier]); show('trophies'); },
   prize: key => { const c = CATALOG.find(x => x.key === key); if (!c || !resultsPrize) return; resultsPrize = null; S.parts.push({ id: uid(), key, tier: c.tier, broken: false }); save(); popup('🎁 ' + c.name + ' is in My parts!'); show('home'); },
 };
+$('ui').addEventListener('input', e => { if (e.target.id === 'nameBox') { const c = e.target.value.replace(/[^A-Za-z0-9 ]/g, '').slice(0, 12); if (c !== e.target.value) e.target.value = c; } });
 $('ui').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; sound('tap'); const f = ACT[b.dataset.act]; if (f) f(b.dataset.arg); });
 
 function spinWheel() {
@@ -1805,6 +1919,7 @@ function spinWheel() {
 function moneyTable(rows, total) { return '<div class="card" style="margin:10px auto;max-width:460px"><table class="odds" style="width:100%">' + rows.map(x => '<tr><td>' + x[0] + '</td><td style="text-align:right">' + (x[1] < 0 ? '-$' + -x[1] : '$' + x[1]) + '</td></tr>').join('') + '<tr><td><b>Total</b></td><td style="text-align:right"><b>$' + total + '</b></td></tr></table></div>'; }
 function unlockSnapshot() { return [...CARS.filter(c => c.un && !c.prizeOnly && unlocked(c.un)).map(c => c.name), ...CATALOG.filter(c => c.un && unlocked(c.un)).map(c => c.name)]; }
 function showResults() {
+  resultsPrize = null;   // a prize left un-picked on an older results screen must not block this one
   const r = R; R = null; endDrag(); setPad(false); Object.keys(keys).forEach(k => keys[k] = false);
   const place = r.p.place, m = r.map, before = unlockSnapshot(), rows = [], coinCash = Math.round(r.coins * ECONOMY.coinValue);
   let extra = '', total = 0;
@@ -1818,7 +1933,7 @@ function showResults() {
     rows.push(['Coins (' + r.coins + ')', coinCash]); rows.forEach(x => total += x[1]); earn(total);
     resultsHTML = '<h1>⏱️ Qualifying: ' + r.finishTime.toFixed(1) + 's</h1>' + h2('You start ' + ord(pos) + ' on the grid!') +
       '<div class="card" style="margin:auto;max-width:460px">' + all.map((x, i) => (i + 1) + '. ' + (x.n === 'you' ? '<b>You</b>' : ['Zippy', m.id === 'city' ? 'Officer Vroom' : 'Rusty', 'Bubbles'][x.n]) + ' - ' + x.t.toFixed(1) + 's').join('<br>') + '</div>' +
-      moneyTable(rows, total) + center(btn('🏁 Start the race!', 'startRace', '', 'green') + btn('Home', 'go', 'home', 'grey'));
+      moneyTable(rows, total) + center(btn('🏁 Start the race!', 'startRace', '', 'green') + btn('🔁 Race again!', 'raceAgain', '', 'green big1') + btn('Home', 'go', 'home', 'grey'));
     show('results'); return;
   }
   S.races++;
@@ -1849,7 +1964,7 @@ function showResults() {
   save();
   const sub = m.name + ' · ' + WEATHER.find(w => w.id === r.weather).name + (r.night ? (r.blood ? ' · 🔴 Blood moon' : ' · 🌙 Night') : '') + ' · ' + r.finishTime.toFixed(1) + 's';
   resultsHTML = '<h1>' + (place === 1 ? '🥇 You WON!' : '🏁 You came ' + ord(place)) + '</h1><p style="text-align:center">' + sub + '</p>' + moneyTable(rows, total) + extra +
-    (r.mode === 'race' && place === 1 ? '' : center(btn('🏠 Home', 'go', 'home', 'blue') + btn('🔧 Garage', 'go', 'garage') + (r.mode === 'practice' && place > 1 ? btn('🤖 Try again', 'practice', '', 'green') : '')));
+    center(btn('🔁 Race again!', 'raceAgain', '', 'green big1') + (r.mode === 'race' && place === 1 ? '' : btn('🏠 Home', 'go', 'home', 'blue') + btn('🔧 Garage', 'go', 'garage')));
   show('results');
 }
 
@@ -1867,6 +1982,6 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 if (S.races === 0 && !S.passedTest) garageTab = 'cars';
 show(S.races === 0 && !S.passedTest ? 'garage' : 'home');   // first time: open in the garage (design doc)
 requestAnimationFrame(frame);
-window.RTW = { get S() { return S; }, get R() { return R; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, BOATS, curBoat, hasBoat, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline };   // for testing only
+window.RTW = { get S() { return S; }, get R() { return R; }, set R(v) { R = v; }, get screen() { return screen; }, set timeScale(v) { timeScale = v; }, startRace, ACT, roll, show, save, keys, ROCKETS, ROCKET_PRICE, DRAG, carZone, CARS, carSprite, carSide, load, ECONOMY, boatSprite, boatSide, BOATS, curBoat, hasBoat, NOODLE_MAP, startFriendRace, FRIEND_CARS, NET, ONL, ONLINE, normCode, codeProblem, makeCode, hostRace, joinRace, claimSlot, lobbyPoll, onlineStart, onlineSync, leaveOnline, TRACK_MODES, PICK, pickTrack, chooseTrack, onlineState, askName, nameOk, NAME, cleanName, SHARE, shareNames, sharePoll, shareEnd, renderOnlineResults };   // for testing only
 </script>
 </body></html>

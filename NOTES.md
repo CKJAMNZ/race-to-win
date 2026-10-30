@@ -239,3 +239,42 @@ Still to do: a preview before you pay (right now each tap costs $50 straight awa
 - Code: `BOATS`, `ownsBoat()`, `hasBoat()`, `curBoat()` in `src/p2.js`; powers in `update()` and `touchSegment()` (`src/p4.js`); boat colour in `src/p5.js`; Boats tab + `buyBoatX` / `useBoat` in `src/p6.js`.
 - Note: race pool sections have no buoys/logs, so the Ducky and Bubble powers only show up on the Pool Noodle Course; speed, steering and turbo work in both.
 - Tests: 23 new checks in `tests/play.js` (137/137 pass). Screenshots: `shots/boats-01..08-*.png`.
+
+## Track modes, Race again, ⭐ First Racer, player names (30 Oct 2026, built locally, NOT pushed - waiting for Jeff's push approval)
+**Track mode picker.** Before every race type (practice, qualifying, race, Pool Noodle Course, same-iPad Friend Race, Online host, and every 🔁 Race again) a "Pick your track!" screen shows 3 big buttons: **1. Off-road**, **2. On-road**, **3. Mountain hills**. Tap one, or press 1/2/3, or arrows + Enter (Esc = back). The last pick is saved as `S.trackMode` (old saves get `'road'`) and is highlighted with "⭐ last time".
+- **Off-road:** brown dirt ground with light and dark pebbles, a tan gravel track, brown/cream stone curbs, no painted centre line.
+- **On-road:** the map's normal paved look, unchanged.
+- **Mountain hills:** green ground, two layers of big rolling green hills on the horizon, and a gentle up/down bob of the horizon.
+- Only the drawing changes; physics are the same. Night races use darker versions.
+- **Pool Noodle Course:** the water stays; the mode changes the shore beside the pool (Off-road = dirt and pebbles, Mountain hills = green grass + hills, On-road = the pale pool deck as before).
+- **Online:** only the host picks (after START, or when the 4th racer joins). It goes inside state: `state = { phase: 'go', map, tmode }`. Joiners use `state.tmode` and never see the picker. No new top-level child.
+- **Same-iPad Friend Race:** one pick for both players.
+- Code: `TRACK_MODES`/`tmodeOk` (`src/p2.js`), `R.tmode` in `startRace()` (`src/p4.js`), `TRACK_LOOK`, `drawPebbles`, `drawHillsBack`, and the render changes, plus `onlineState()` (`src/p5.js`), `SCREENS.trackPick`, `pickTrack`/`chooseTrack` and the keys (`src/p6.js`).
+
+**🔁 Race again** is a big button on every finish screen: practice, qualifying, race, Friend Race and Online. Online goes back to the online start screen, because the old race is deleted. It replays the same race type and map through the picker. If a prize part is waiting, you're asked to pick it first. Fix: an un-picked prize from an older race no longer blocks a later results screen.
+
+**⭐ First Racer:** the host's slot in the lobby shows a "⭐ First Racer" badge, so friends see it when they join. Only a flag is sent (`players.p1.first = 1`).
+
+**Player names (Jeff approved; the share rule is Archer's design).**
+- Online: the host types a name after making the code, and a friend types theirs after joining. Same iPad: Player 1 types, then Player 2. Names are letters, numbers and spaces only, up to 12 characters, entered in a big box with a big OK button (Enter also works). They're cleaned while you type and saved only on this iPad (`S.myName`, `S.friendName`).
+- **Never sent by default.** During the race and on the results screen, each iPad shows only its own name; the others show "Friend" ("Friend won!").
+- After an online race, the **winner** sees a big **"Share names? YES"** button. Only if they tap it, the winner writes `state.share = 1` and `state.names.<their slot>`. Each other iPad sees the flag and writes **its own** name to `state.names.<own slot>`. Then every screen shows "Archer won!" and the names list.
+- The race node now stays up for 30 s after the finish (`SHARE.ms`) so YES has time to work. After that, the host deletes it, and the names go with it.
+- Same-iPad Friend Race shows both names: "Archer WINS!" and "Astrid". Leave them empty for Player 1 / Player 2.
+- Code: `cleanName` (`src/p2.js`), `SHARE`, `renderOnlineResults`, `shareNames`, `sharePoll`, `shareEnd` (`src/p5.js`), `SCREENS.nameEntry`, `askName`/`nameOk` (`src/p6.js`).
+
+**Tests:** `tests/play.js` **170/170 pass, 0 console errors** (it was 138; existing flows now tap through the picker and name screens). The new checks cover:
+- the picker appears before all 6 race types, and joiners get no picker
+- each mode can be picked by touch and by keyboard (1/2/3), and by arrows + Enter
+- canvas ground pixels: brown for Off-road, green for Mountain hills, different from On-road
+- the pick is saved and highlighted, and an old save without `trackMode` loads
+- the Noodle shore follows the mode, and the Friend Race uses one pick
+- the `{phase,map,tmode}` payload, a joiner using the host's tmode, the 4-player auto-start asking the host first, and no new top-level key
+- Race again, and the First Racer badge
+- names: cleaning; the same iPad showing both names; no name in any DB write by default (every PUT inspected); YES writing only inside state; a joiner showing "Friend won" before YES and "Archer won" after, while publishing only its own name; names deleted with the race
+
+**Real-database smoke test:** `tests/online-smoke-modes.js` (local build, real Firebase, 2 pages) passed; output is in `tests/last-smoke-modes.txt`. It checked that the rules accept `state.tmode`, `state.share`, `state.names` and `players.p1.first`, that the joiner got `hills`, that no names went over before YES, and that the node was null after the host's self-delete.
+
+**Screenshots:** `shots/mode-01-picker.png`, `mode-02-offroad.png`, `mode-03-onroad.png`, `mode-04-mountain-hills.png`, `mode-05-noodle-off.png`, `mode-05-noodle-hills.png`, `mode-06-friend-offroad.png`, `mode-07-lobby-first-racer.png`, `mode-08-race-again.png`, `names-01..06-*.png`.
+
+**Next steps:** mode-specific physics (slippery gravel, slower climbs on hills), per-mode trophies, a real road curve or elevation for hills, a "copy code" button, and finish-time tiebreak (two iPads can both say "You WON" in a dead heat, a known limit).
